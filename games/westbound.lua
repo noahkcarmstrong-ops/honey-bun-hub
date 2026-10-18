@@ -38,8 +38,8 @@ return {
         local localPlayer, playerGui = Players.LocalPlayer, Players.LocalPlayer:WaitForChild("PlayerGui")
         local old = playerGui:FindFirstChild("HoneyBunWestboundESP")
         if old then old:Destroy() end
-        local s = {enabled=false,cowboys=true,outlaws=true,others=true,labels=true,names=true,distance=true,health=true,tracers=false,boxes=false,chams=false,hitbox=false,visibleOnly=false,maxDistance=1000,teamMode="All",style="Labels"}
-        local choices, choiceIndex = {500,1000,2500,math.huge}, 2
+        local s = {enabled=false,cowboys=true,outlaws=true,others=true,labels=true,names=true,distance=true,health=true,tracers=false,chams=false,hitbox=false,visibleOnly=false,maxDistance=math.huge,teamMode="All",style="Labels"}
+        local choices, choiceIndex = {500,1000,2500,math.huge}, 4
         local colors = {Cowboys=Color3.fromRGB(75,145,235),Outlaws=Color3.fromRGB(220,75,75),Other=Color3.fromRGB(165,165,165)}
         local connections, records, ownedRows, advancedRows, advancedControls, dead = {}, {}, {}, {}, {}, false
         local nextOrder = 1
@@ -96,7 +96,7 @@ return {
             s.teamMode=v; s.cowboys=v=="All" or v=="Cowboys"; s.outlaws=v=="All" or v=="Outlaws"; s.others=v=="All"
         end)
         cycleRow("Style",{"Labels","Outline","Full"},s.style,function(v)
-            s.style=v; s.labels=true; s.chams=v=="Outline" or v=="Full"; s.boxes=v=="Full"; s.tracers=v=="Full"
+            s.style=v; s.labels=true; s.chams=v=="Outline" or v=="Full"; s.tracers=v=="Full"
             if syncAdvanced then syncAdvanced() end
         end)
         local advancedButton = button(contentFrame,"More player options")
@@ -115,7 +115,6 @@ return {
         advancedRow("distance","Distance",s.distance,function(v)s.distance=v end)
         advancedRow("health","Health",s.health,function(v)s.health=v end)
         advancedRow("tracers","Tracers",s.tracers,function(v)s.tracers=v end)
-        advancedRow("boxes","2D boxes",s.boxes,function(v)s.boxes=v end)
         advancedRow("chams","Chams",s.chams,function(v)s.chams=v end)
         advancedRow("hitbox","Visual hitbox",s.hitbox,function(v)s.hitbox=v end)
         advancedRow("visibleOnly","Visible only",s.visibleOnly,function(v)s.visibleOnly=v end)
@@ -123,7 +122,7 @@ return {
         local distanceFrame = distanceButton.Parent
         distanceFrame.Visible = false
         table.insert(advancedRows,distanceFrame)
-        distanceButton.Text = "1000 studs"
+        distanceButton.Text = "Unlimited"
         connect(distanceButton.Activated,function()
             choiceIndex = choiceIndex % #choices + 1; s.maxDistance = choices[choiceIndex]
             distanceButton.Text = s.maxDistance == math.huge and "Unlimited" or (tostring(s.maxDistance).." studs")
@@ -151,7 +150,7 @@ return {
             return (team=="Cowboys" and s.cowboys) or (team=="Outlaws" and s.outlaws) or (team=="Other" and s.others)
         end
         local function hide(record)
-            record.name.Visible,record.tracer.Visible,record.box.Visible,record.selection.Visible = false,false,false,false
+            record.name.Visible,record.tracer.Visible,record.selection.Visible = false,false,false
             record.highlight.Enabled = false
         end
         local function bind(record, character)
@@ -160,12 +159,11 @@ return {
         end
         local function add(player)
             if player==localPlayer or records[player] then return end
-            local record = {player=player,isVisible=nil,name=text(overlay,"",UDim2.fromOffset(240,20),Color3.new(1,1,1),12),tracer=Instance.new("Frame"),box=Instance.new("Frame"),highlight=Instance.new("Highlight"),selection=Instance.new("SelectionBox")}
+            local record = {player=player,isVisible=nil,name=text(overlay,"",UDim2.fromOffset(240,20),Color3.new(1,1,1),12),tracer=Instance.new("Frame"),highlight=Instance.new("Highlight"),selection=Instance.new("SelectionBox")}
             record.name.AnchorPoint,record.name.TextXAlignment = Vector2.new(.5,1),Enum.TextXAlignment.Center
             record.name.TextStrokeColor3,record.name.TextStrokeTransparency = Color3.new(0,0,0),0.35
-            record.tracer.BorderSizePixel,record.tracer.AnchorPoint,record.tracer.BackgroundColor3,record.tracer.Size = 0,Vector2.new(0,.5),Color3.fromRGB(180,180,180),UDim2.fromOffset(0,1)
-            record.tracer.Parent,record.box.Parent,record.name.Parent = overlay,overlay,overlay
-            record.box.BackgroundTransparency,record.box.BorderSizePixel = 1,1
+            record.tracer.BorderSizePixel,record.tracer.AnchorPoint,record.tracer.BackgroundColor3,record.tracer.Size = 0,Vector2.new(.5,.5),Color3.fromRGB(180,180,180),UDim2.fromOffset(0,1)
+            record.tracer.Parent,record.name.Parent = overlay,overlay
             record.highlight.FillTransparency,record.highlight.OutlineTransparency,record.highlight.DepthMode,record.highlight.Parent = .72,.15,Enum.HighlightDepthMode.AlwaysOnTop,overlay
             record.selection.LineThickness,record.selection.SurfaceTransparency,record.selection.Color3,record.selection.Parent = .04,1,Color3.fromRGB(255,190,70),overlay
             records[player] = record
@@ -176,7 +174,7 @@ return {
             local record=records[player]; if not record then return end
             records[player]=nil
             if record.characterConnection then record.characterConnection:Disconnect() end
-            for _,object in ipairs({record.name,record.tracer,record.box,record.highlight,record.selection}) do object:Destroy() end
+            for _,object in ipairs({record.name,record.tracer,record.highlight,record.selection}) do object:Destroy() end
         end
         for _,player in ipairs(Players:GetPlayers()) do add(player) end
         connect(Players.PlayerAdded,add); connect(Players.PlayerRemoving,remove)
@@ -190,7 +188,8 @@ return {
         end
         local function setTracer(frame,fromPoint,toPoint)
             local delta=toPoint-fromPoint
-            frame.Position,frame.Size,frame.Rotation=UDim2.fromOffset(fromPoint.X,fromPoint.Y),UDim2.fromOffset(delta.Magnitude,1),math.deg(math.atan2(delta.Y,delta.X))
+            local midpoint=(fromPoint+toPoint)/2
+            frame.Position,frame.Size,frame.Rotation=UDim2.fromOffset(midpoint.X,midpoint.Y),UDim2.fromOffset(delta.Magnitude,1),math.deg(math.atan2(delta.Y,delta.X))
         end
         local function update(record,camera,viewport,heavy)
             local character=record.player.Character
@@ -210,24 +209,14 @@ return {
             end
             local color,rootPoint=colors[team],camera:WorldToViewportPoint(root.Position)
             if rootPoint.Z<=0 then hide(record); return end
-            local minX,minY,maxX,maxY,valid=0,0,0,0,false
-            if s.boxes then
-                local boxCf,boxSize=character:GetBoundingBox(); minX,minY,maxX,maxY=viewport.X,viewport.Y,0,0; local allInFront=true
-                for x=-1,1,2 do for y=-1,1,2 do for z=-1,1,2 do
-                    local point=camera:WorldToViewportPoint((boxCf*CFrame.new(boxSize.X*x/2,boxSize.Y*y/2,boxSize.Z*z/2)).Position)
-                    if point.Z<=0 then allInFront=false else minX,minY,maxX,maxY=math.min(minX,point.X),math.min(minY,point.Y),math.max(maxX,point.X),math.max(maxY,point.Y) end
-                end end end
-                valid=allInFront and maxX>minX and maxY>minY
-            end
             record.name.Visible=s.labels and (s.names or s.distance or s.health)
             if record.name.Visible then
                 local parts={}; if s.names then table.insert(parts,(record.player.DisplayName or record.player.Name).." ["..team.."]") end
                 if s.distance then table.insert(parts,string.format("[%d]",math.floor(distance))) end; if s.health then table.insert(parts,string.format("HP %d",math.floor(humanoid.Health))) end
-                record.name.Text,record.name.TextColor3=table.concat(parts,"  "),color; record.name.Position=UDim2.fromOffset(rootPoint.X,valid and minY-2 or rootPoint.Y-28)
+                record.name.Text,record.name.TextColor3=table.concat(parts,"  "),color; record.name.Position=UDim2.fromOffset(rootPoint.X,rootPoint.Y-28)
             end
             record.tracer.Visible=s.tracers; record.tracer.BackgroundColor3=color
             if record.tracer.Visible then setTracer(record.tracer,Vector2.new(viewport.X/2,viewport.Y),Vector2.new(rootPoint.X,rootPoint.Y)) end
-            record.box.Visible=s.boxes and valid; if record.box.Visible then record.box.Position,record.box.Size,record.box.BorderColor3=UDim2.fromOffset(minX,minY),UDim2.fromOffset(maxX-minX,maxY-minY),color end
             record.highlight.Enabled,record.highlight.FillColor,record.highlight.OutlineColor=s.chams,color,color
             record.selection.Visible,record.selection.Adornee=s.hitbox,record.root
         end
