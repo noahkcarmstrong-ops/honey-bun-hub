@@ -7,7 +7,7 @@ local function mount(contentFrame)
     local player = Players.LocalPlayer
     local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
     local alive = true
-    local master, animals, chests = false, true, true
+    local animals, chests, advanced = false, false, false
     local distances = {500, 1000, 2500, math.huge}
     local distanceIndex = 2
     local queue, queued, tracked = {}, {}, {}
@@ -48,34 +48,61 @@ local function mount(contentFrame)
 
     local function row(text, order)
         local button = Instance.new("TextButton")
-        button.Size = UDim2.new(1, -8, 0, 32)
+        button.Size = UDim2.new(1, -8, 0, 28)
         button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-        button.BorderColor3 = Color3.fromRGB(95, 95, 95)
+        button.BorderSizePixel = 0
         button.TextColor3 = Color3.fromRGB(245, 245, 245)
         button.Font = Enum.Font.Gotham
         button.TextSize = 13
         button.LayoutOrder = order
         button.Text = text
         button.Parent = contentFrame
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = button
         table.insert(owned, button)
         return button
     end
 
-    local masterButton = row("World ESP: OFF", 100)
-    local animalButton = row("Animals: ON", 101)
-    local chestButton = row("Treasure chests: ON", 102)
-    local rangeButton = row("Distance: 1000", 103)
+    local function label(text, order, size, color)
+        local item = Instance.new("TextLabel")
+        item.Size = UDim2.new(1, -8, 0, size)
+        item.BackgroundTransparency = 1
+        item.TextColor3 = color
+        item.Font = Enum.Font.Gotham
+        item.TextSize = size == 24 and 16 or 12
+        item.TextXAlignment = Enum.TextXAlignment.Left
+        item.LayoutOrder = order
+        item.Text = text
+        item.Parent = contentFrame
+        table.insert(owned, item)
+        return item
+    end
+
+    local heading = label("WORLD", 100, 24, Color3.fromRGB(245, 245, 245))
+    local animalButton = row("Animals: OFF", 101)
+    local chestButton = row("Treasure chests: OFF", 102)
+    local moreButton = row("More world options", 103)
+    local rangeButton = row("Distance: 1000", 104)
+    local foundLabel = label("No targets discovered yet", 105, 20, Color3.fromRGB(150, 150, 150))
+    rangeButton.Visible, foundLabel.Visible = false, false
 
     local function refreshControls()
-        masterButton.Text = "World ESP: " .. (master and "ON" or "OFF")
         animalButton.Text = "Animals: " .. (animals and "ON" or "OFF")
         chestButton.Text = "Treasure chests: " .. (chests and "ON" or "OFF")
+        moreButton.Text = advanced and "Hide world options" or "More world options"
+        rangeButton.Visible, foundLabel.Visible = advanced, advanced
+        local animalCount, chestCount = 0, 0
+        for _, item in pairs(tracked) do
+            if item.kind == "animal" then animalCount = animalCount + 1 else chestCount = chestCount + 1 end
+        end
+        foundLabel.Text = (animalCount + chestCount == 0) and "No targets discovered yet" or ("Animals found: " .. animalCount .. " · Chests found: " .. chestCount)
         local value = distances[distanceIndex]
         rangeButton.Text = "Distance: " .. (value == math.huge and "Unlimited" or tostring(value))
     end
-    masterButton.Activated:Connect(function() master = not master; refreshControls() end)
     animalButton.Activated:Connect(function() animals = not animals; refreshControls() end)
     chestButton.Activated:Connect(function() chests = not chests; refreshControls() end)
+    moreButton.Activated:Connect(function() advanced = not advanced; refreshControls() end)
     rangeButton.Activated:Connect(function()
         distanceIndex = distanceIndex % #distances + 1
         refreshControls()
@@ -145,6 +172,26 @@ local function mount(contentFrame)
             end
         end
     end
+    local function chestLootState(model)
+        local hidden, eligible = false, false
+        local function read(name, value)
+            if type(value) ~= "boolean" then return end
+            if name == "Looted" or name == "IsLooted" then
+                if value then hidden = true else eligible = true end
+            elseif name == "Unlooted" then
+                if value then eligible = true else hidden = true end
+            elseif name == "Empty" or name == "IsEmpty" then
+                if value then hidden = true end
+            end
+        end
+        for _, name in ipairs({"Looted", "IsLooted", "Unlooted", "Empty", "IsEmpty"}) do read(name, model:GetAttribute(name)) end
+        for _, child in ipairs(model:GetChildren()) do
+            if child:IsA("BoolValue") then read(child.Name, child.Value) end
+        end
+        if hidden then return "hidden" end
+        if eligible then return "unlooted" end
+        return "unknown"
+    end
     local function remove(model)
         local item = tracked[model]
         if item then if item.gui then item.gui:Destroy() end; tracked[model] = nil end
@@ -168,7 +215,7 @@ local function mount(contentFrame)
         end
         local part = partFor(model)
         if not part then return end
-        tracked[model] = {kind=kind, label=label, part=part, gui=nil, gold=nil, nextGoldAt=0}
+        tracked[model] = {kind=kind, label=label, part=part, gui=nil, gold=nil, goldChecked=false, nextGoldAt=0, chestState="unknown"}
     end
 
     for _, instance in ipairs(workspaceRoot:GetDescendants()) do enqueue(instance) end
@@ -193,7 +240,7 @@ local function mount(contentFrame)
         end
         if queueHead > queueTail then queueHead, queueTail = 1, 0 end
         if not playerGui then playerGui = player and player:FindFirstChildOfClass("PlayerGui") end
-        if master and playerGui and not billboardFolder then
+        if playerGui and not billboardFolder then
             billboardFolder = Instance.new("Folder")
             billboardFolder.Name = "HoneyBunWorldESP"
             billboardFolder.Parent = playerGui
@@ -207,16 +254,29 @@ local function mount(contentFrame)
         heartbeatClock = 0
         local origin = camera.CFrame.Position
         for model, item in pairs(tracked) do
-            local enabled = master and ((item.kind == "animal" and animals) or (item.kind == "chest" and chests))
+            if item.kind == "chest" then
+                item.chestState = chestLootState(model)
+                if elapsed >= item.nextGoldAt or not item.goldChecked then
+                    item.gold = goldFor(model)
+                    item.goldChecked = true
+                    item.nextGoldAt = elapsed + 1
+                end
+                if item.gold == 0 then
+                    item.chestState = "hidden"
+                elseif item.chestState == "unknown" and item.gold and item.gold > 0 then
+                    item.chestState = "unlooted"
+                end
+            end
+            local enabled = (item.kind == "animal" and animals) or (item.kind == "chest" and chests and item.chestState == "unlooted")
             if not model.Parent or not item.part.Parent then remove(model)
-            elseif not enabled then if item.gui then item.gui:Destroy(); item.gui = nil end
+            elseif not enabled then if item.gui then item.gui.Enabled = false end
             else
                 local distance = (item.part.Position - origin).Magnitude
-                local point, visible = camera:WorldToViewportPoint(item.part.Position)
-                if distance <= distances[distanceIndex] and visible and point.Z > 0 then
+                if distance <= distances[distanceIndex] then
                     if not item.gui then
                         local gui = Instance.new("BillboardGui")
                         gui.Name, gui.AlwaysOnTop, gui.Size = "WorldESP", true, UDim2.fromOffset(190, 26)
+                        gui.MaxDistance = distances[distanceIndex] == math.huge and math.huge or distances[distanceIndex]
                         gui.StudsOffset = Vector3.new(0, item.part.Size.Y * 0.5 + 2, 0)
                         gui.Adornee, gui.Parent = item.part, billboardFolder
                         local label = Instance.new("TextLabel")
@@ -226,16 +286,14 @@ local function mount(contentFrame)
                         label.Parent = gui
                         item.gui = gui; item.text = label
                     end
-                    if item.kind == "chest" and elapsed >= item.nextGoldAt then
-                        item.gold = goldFor(model)
-                        item.nextGoldAt = elapsed + 1
-                    end
-                    item.text.Text = item.kind == "animal" and (item.label .. " · " .. math.floor(distance) .. " studs") or ((item.gold and ("Treasure chest · Gold: " .. tostring(item.gold)) or "Treasure chest · Gold unknown") .. " · " .. math.floor(distance) .. " studs")
+                    item.gui.MaxDistance = distances[distanceIndex] == math.huge and math.huge or distances[distanceIndex]
+                    item.text.Text = item.kind == "animal" and (item.label .. " · " .. math.floor(distance) .. " studs") or ("Treasure chest" .. (item.gold and (" · Gold: " .. tostring(item.gold)) or "") .. " · " .. math.floor(distance) .. " studs")
                     item.text.TextColor3 = item.kind == "animal" and Color3.fromRGB(180, 255, 180) or Color3.fromRGB(255, 225, 130)
                     item.gui.Enabled = true
                 elseif item.gui then item.gui.Enabled = false end
             end
         end
+        if advanced then refreshControls() end
     end))
     refreshControls()
     return cleanup
