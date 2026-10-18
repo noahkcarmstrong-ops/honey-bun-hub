@@ -8,13 +8,15 @@ local function mount(contentFrame)
     local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
     local alive = true
     local animals, chests, advanced = false, false, false
+    local animalTypesExpanded = false
+    local animalTypes, speciesButtons, speciesButtonLabels = {}, {}, {}
+    local speciesButtonCount = 0
     local distances = {500, 1000, 2500, math.huge}
-    local distanceIndex = 2
+    local distanceIndex = 4
     local queue, queued, tracked = {}, {}, {}
     local queueHead, queueTail = 1, 0
     local connections, owned = {}, {}
     local heartbeatClock, elapsed = 0, 0
-    local billboardFolder
 
     local function disconnectAll()
         for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
@@ -30,7 +32,6 @@ local function mount(contentFrame)
             if item.gui then item.gui:Destroy() end
             tracked[model] = nil
         end
-        if billboardFolder then billboardFolder:Destroy() end
         for _, object in ipairs(owned) do object:Destroy() end
         owned = {}
     end
@@ -83,26 +84,60 @@ local function mount(contentFrame)
     local animalButton = row("Animals: OFF", 101)
     local chestButton = row("Treasure chests: OFF", 102)
     local moreButton = row("More world options", 103)
-    local rangeButton = row("Distance: 1000", 104)
+    local rangeButton = row("Distance: Unlimited", 104)
     local foundLabel = label("No targets discovered yet", 105, 20, Color3.fromRGB(150, 150, 150))
+    foundLabel.Size, foundLabel.TextWrapped = UDim2.new(1, -8, 0, 48), true
+    local animalTypesButton = row("Animal types", 106)
+    local allAnimalsButton = row("All animal types", 107)
+    local noAnimalsButton = row("No animal types", 108)
     rangeButton.Visible, foundLabel.Visible = false, false
+
+    local function updateSpeciesButtons()
+        for key, button in pairs(speciesButtons) do
+            button.Visible = animals and animalTypesExpanded
+            button.Text = (animalTypes[key] and "✓ " or "  ") .. speciesButtonLabels[key]
+        end
+        animalTypesButton.Visible = animals
+        allAnimalsButton.Visible = animals and animalTypesExpanded
+        noAnimalsButton.Visible = animals and animalTypesExpanded
+    end
 
     local function refreshControls()
         animalButton.Text = "Animals: " .. (animals and "ON" or "OFF")
         chestButton.Text = "Treasure chests: " .. (chests and "ON" or "OFF")
         moreButton.Text = advanced and "Hide world options" or "More world options"
         rangeButton.Visible, foundLabel.Visible = advanced, advanced
-        local animalCount, chestCount = 0, 0
+        local animalCount, chestCount, eligibleChests, unknownChests = 0, 0, 0, 0
         for _, item in pairs(tracked) do
             if item.kind == "animal" then animalCount = animalCount + 1 else chestCount = chestCount + 1 end
+            if item.kind == "chest" then
+                if item.chestState == "unlooted" then eligibleChests = eligibleChests + 1 end
+                if item.chestState == "unknown" then unknownChests = unknownChests + 1 end
+            end
         end
-        foundLabel.Text = (animalCount + chestCount == 0) and "No targets discovered yet" or ("Animals found: " .. animalCount .. " · Chests found: " .. chestCount)
+        if animalCount + chestCount == 0 then
+            foundLabel.Text = "No targets discovered yet"
+        elseif unknownChests > 0 then
+            foundLabel.Text = "Animals found: " .. animalCount .. " · Chests found: " .. chestCount .. " · Eligible: " .. eligibleChests .. " · " .. unknownChests .. " chest loot state unreadable"
+        else
+            foundLabel.Text = "Animals found: " .. animalCount .. " · Chests found: " .. chestCount .. " · Eligible: " .. eligibleChests
+        end
         local value = distances[distanceIndex]
         rangeButton.Text = "Distance: " .. (value == math.huge and "Unlimited" or tostring(value))
+        updateSpeciesButtons()
     end
     animalButton.Activated:Connect(function() animals = not animals; refreshControls() end)
     chestButton.Activated:Connect(function() chests = not chests; refreshControls() end)
     moreButton.Activated:Connect(function() advanced = not advanced; refreshControls() end)
+    animalTypesButton.Activated:Connect(function() animalTypesExpanded = not animalTypesExpanded; refreshControls() end)
+    allAnimalsButton.Activated:Connect(function()
+        for key in pairs(animalTypes) do animalTypes[key] = true end
+        refreshControls()
+    end)
+    noAnimalsButton.Activated:Connect(function()
+        for key in pairs(animalTypes) do animalTypes[key] = false end
+        refreshControls()
+    end)
     rangeButton.Activated:Connect(function()
         distanceIndex = distanceIndex % #distances + 1
         refreshControls()
@@ -110,6 +145,10 @@ local function mount(contentFrame)
 
     local species = {horse=true, bear=true, deer=true, bison=true, coyote=true, wolf=true, rabbit=true, boar=true, cow=true, ox=true, goat=true, sheep=true, pig=true, chicken=true, turkey=true, elk=true, moose=true, buffalo=true, fox=true, alligator=true, snake=true}
     local function lower(value) return string.lower(tostring(value or "")) end
+    local function speciesLabel(value)
+        local text = tostring(value or ""):gsub("(%l)(%u)", "%1 %2"):gsub("[_%-]+", " "):gsub("%s+", " ")
+        return text:match("^%s*(.-)%s*$")
+    end
     local function hasSpecies(value)
         local words = tostring(value or ""):gsub("(%l)(%u)", "%1 %2")
         for word in lower(words):gmatch("[%a]+") do if species[word] then return word end end
@@ -135,9 +174,8 @@ local function mount(contentFrame)
         local animal = attributeString(model, "AnimalType") or attributeString(model, "Species")
         local animalName = hasSpecies(animal)
         if animal and animal ~= "" or animalName or hasSpecies(model.Name) or tagged(model, {"Animal"}) then
-            if animal and animal ~= "" then return "animal", animal end
-            if animalName or hasSpecies(model.Name) then return "animal", animalName or hasSpecies(model.Name) end
-            return "animal", model.Name
+            local display = speciesLabel(animalName or (animal and animal ~= "" and animal) or hasSpecies(model.Name) or model.Name)
+            return "animal", display, lower(display)
         end
         local name = lower(model.Name)
         local chestName = name:find("treasurechest", 1, true) or name == "treasure chest"
@@ -215,7 +253,20 @@ local function mount(contentFrame)
         end
         local part = partFor(model)
         if not part then return end
-        tracked[model] = {kind=kind, label=label, part=part, gui=nil, gold=nil, goldChecked=false, nextGoldAt=0, chestState="unknown"}
+        local speciesKeyValue = kind == "animal" and lower(label) or nil
+        if speciesKeyValue and animalTypes[speciesKeyValue] == nil then animalTypes[speciesKeyValue] = true end
+        tracked[model] = {kind=kind, label=label, speciesKey=speciesKeyValue, part=part, gui=nil, gold=nil, goldChecked=false, nextGoldAt=0, chestState="unknown"}
+        if speciesKeyValue and not speciesButtons[speciesKeyValue] then
+            speciesButtonCount = speciesButtonCount + 1
+            local button = row("  " .. label, 108 + speciesButtonCount)
+            button.Visible = false
+            speciesButtonLabels[speciesKeyValue] = label
+            button.Activated:Connect(function()
+                animalTypes[speciesKeyValue] = not animalTypes[speciesKeyValue]
+                refreshControls()
+            end)
+            speciesButtons[speciesKeyValue] = button
+        end
     end
 
     for _, instance in ipairs(workspaceRoot:GetDescendants()) do enqueue(instance) end
@@ -240,11 +291,6 @@ local function mount(contentFrame)
         end
         if queueHead > queueTail then queueHead, queueTail = 1, 0 end
         if not playerGui then playerGui = player and player:FindFirstChildOfClass("PlayerGui") end
-        if playerGui and not billboardFolder then
-            billboardFolder = Instance.new("Folder")
-            billboardFolder.Name = "HoneyBunWorldESP"
-            billboardFolder.Parent = playerGui
-        end
         local camera = workspaceRoot.CurrentCamera
         if not camera then
             for _, item in pairs(tracked) do if item.gui then item.gui.Enabled = false end end
@@ -267,7 +313,7 @@ local function mount(contentFrame)
                     item.chestState = "unlooted"
                 end
             end
-            local enabled = (item.kind == "animal" and animals) or (item.kind == "chest" and chests and item.chestState == "unlooted")
+            local enabled = (item.kind == "animal" and animals and item.speciesKey and animalTypes[item.speciesKey] ~= false) or (item.kind == "chest" and chests and item.chestState == "unlooted")
             if not model.Parent or not item.part.Parent then remove(model)
             elseif not enabled then if item.gui then item.gui.Enabled = false end
             else
@@ -276,9 +322,9 @@ local function mount(contentFrame)
                     if not item.gui then
                         local gui = Instance.new("BillboardGui")
                         gui.Name, gui.AlwaysOnTop, gui.Size = "WorldESP", true, UDim2.fromOffset(190, 26)
-                        gui.MaxDistance = distances[distanceIndex] == math.huge and math.huge or distances[distanceIndex]
+                        gui.MaxDistance = distances[distanceIndex] == math.huge and 1000000000 or distances[distanceIndex]
                         gui.StudsOffset = Vector3.new(0, item.part.Size.Y * 0.5 + 2, 0)
-                        gui.Adornee, gui.Parent = item.part, billboardFolder
+                        gui.Adornee, gui.Parent = item.part, playerGui
                         local label = Instance.new("TextLabel")
                         label.Size = UDim2.fromScale(1, 1); label.BackgroundTransparency = 1
                         label.TextStrokeTransparency = 0.25; label.TextStrokeColor3 = Color3.fromRGB(25, 25, 25)
@@ -286,7 +332,7 @@ local function mount(contentFrame)
                         label.Parent = gui
                         item.gui = gui; item.text = label
                     end
-                    item.gui.MaxDistance = distances[distanceIndex] == math.huge and math.huge or distances[distanceIndex]
+                    item.gui.MaxDistance = distances[distanceIndex] == math.huge and 1000000000 or distances[distanceIndex]
                     item.text.Text = item.kind == "animal" and (item.label .. " · " .. math.floor(distance) .. " studs") or ("Treasure chest" .. (item.gold and (" · Gold: " .. tostring(item.gold)) or "") .. " · " .. math.floor(distance) .. " studs")
                     item.text.TextColor3 = item.kind == "animal" and Color3.fromRGB(180, 255, 180) or Color3.fromRGB(255, 225, 130)
                     item.gui.Enabled = true
