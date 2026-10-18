@@ -104,6 +104,13 @@ espTab.Font = Enum.Font.GothamMedium
 espTab.AutoButtonColor = false
 espTab.Parent = tabs
 Instance.new("UICorner", espTab).CornerRadius = UDim.new(0, 6)
+local farmTab
+if type(current.farmPath)=="string" then
+    farmTab=espTab:Clone()
+    farmTab.Name,farmTab.Text,farmTab.LayoutOrder="Farm","FARM",1
+    farmTab.BackgroundColor3,farmTab.TextColor3=Color3.fromRGB(30,30,30),Color3.fromRGB(200,200,200)
+    farmTab.Parent=tabs
+end
 
 local content = Instance.new("ScrollingFrame")
 content.Name = "ESPPage"
@@ -120,9 +127,47 @@ content.Parent = panel
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
+local farmContent, farmCleanup, farmMounted, farmLoading, farmNotice
+if farmTab then
+    farmContent=content:Clone()
+    farmContent.Name,farmContent.Visible,farmContent.Parent="FarmPage",false,panel
+end
+local function selectPage(farm)
+    content.Visible=not farm
+    if farmContent then farmContent.Visible=farm end
+    espTab.BackgroundColor3=Color3.fromRGB(farm and 30 or 235,farm and 30 or 235,farm and 30 or 235)
+    espTab.TextColor3=Color3.fromRGB(farm and 200 or 20,farm and 200 or 20,farm and 200 or 20)
+    if farmTab then
+        farmTab.BackgroundColor3=farm and Color3.fromRGB(235,235,235) or Color3.fromRGB(30,30,30)
+        farmTab.TextColor3=farm and Color3.fromRGB(20,20,20) or Color3.fromRGB(200,200,200)
+    end
+end
 espTab.Activated:Connect(function()
-    content.Visible = true
+    selectPage(false)
 end)
+if farmTab then
+    farmTab.Activated:Connect(function()
+        selectPage(true)
+        if farmMounted or farmLoading then return end
+        farmLoading=true
+        if farmNotice then farmNotice:Destroy();farmNotice=nil end
+        local ok,result=pcall(function()
+            local source=game:HttpGet(base..current.farmPath.."?refresh="..tostring(DateTime.now().UnixTimestampMillis),false)
+            assert(gui.Parent and farmContent.Parent,"Hub was closed during farm loading")
+            local chunk,message=loadstring(source);assert(chunk,message)
+            local mount=chunk();assert(type(mount)=="function","Farm module unavailable")
+            local stop=mount(farmContent);assert(type(stop)=="function","Farm setup failed")
+            return stop
+        end)
+        farmLoading=false
+        if not gui.Parent then if ok then result() end;return end
+        if ok then farmCleanup=result;farmMounted=true else
+            warn("Honey Bun Hub: farm menu failed to load",result)
+            farmNotice=text(farmContent,"Farm could not load. Click FARM to retry.",UDim2.fromOffset(0,0),UDim2.new(1,-8,0,42),12,170)
+            farmNotice.TextWrapped=true
+        end
+    end)
+end
 
 
 local refresh = Instance.new("TextButton")
@@ -176,6 +221,7 @@ local cleanup
 gui.Destroying:Connect(function()
     connection:Disconnect()
     if cleanup then cleanup() end
+    if farmCleanup then farmCleanup() end
 end)
 
 if type(current.mount) == "function" then

@@ -25,6 +25,18 @@ The hitbox option is a visual outline only and does not alter character hitboxes
 
 Animal and chest discovery uses model names, tags, and attributes. Exact live Westbound object names have not been inspected. Only chests with a readable unlooted state or positive gold are shown. Looted or empty chests are hidden. Unavailable gold is omitted from the label; amounts are never guessed. Detection covers objects streamed to the client, with no fixed target cap. Unloaded objects cannot be detected. Loot flags refresh about every 0.1 seconds; gold amounts refresh about once per second. Player markers update every frame.
 
+## Farm (experimental)
+
+The **FARM** tab beside **ESP** contains a register/safe route based on a historical Westbound implementation. Its live compatibility and payout rate still require verification. No `$100k/min` rate or removal of server cooldowns is promised; research and sources are in [docs/farming-research.md](docs/farming-research.md).
+
+1. Stand at the spot where the game empties your robbery bag and choose **Set cash-in spot**.
+2. Choose registers, safes, or both, then press **Start**.
+3. Use **Stop** at any time. Refresh also stops the farm; it never resumes automatically.
+
+The farm tracks actual increases in your bag, returns to your chosen spot when full, and stops if collection or cash-in cannot be confirmed. If setup is unsupported or attempts do not collect anything, use **Copy farm report** and send the report for diagnosis. The route does not alter local money or cooldown values.
+
+The selected mode and cash-in spot are remembered for the current game session. Running is always reset to stopped when the hub reloads.
+
 ## Other games and future additions
 
 Other games open the universal menu until game-specific support is added. To add a game:
