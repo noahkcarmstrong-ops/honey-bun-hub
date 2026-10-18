@@ -82,10 +82,31 @@ line.Position = UDim2.fromOffset(28, 96)
 line.Size = UDim2.new(1, -56, 0, 1)
 line.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 line.BorderSizePixel = 0
-text(panel, path and "PLAYER ESP" or "OVERVIEW", UDim2.fromOffset(28, 120), UDim2.new(1, -170, 0, 20), 11, 120)
+local tabs = Instance.new("Frame")
+tabs.Name = "Tabs"
+tabs.Position = UDim2.fromOffset(28, 112)
+tabs.Size = UDim2.new(1, -170, 0, 32)
+tabs.BackgroundTransparency = 1
+tabs.Parent = panel
+local tabLayout = Instance.new("UIListLayout", tabs)
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.Padding = UDim.new(0, 8)
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+local espTab = Instance.new("TextButton")
+espTab.Name = "ESP"
+espTab.Size = UDim2.fromOffset(72, 32)
+espTab.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
+espTab.BorderSizePixel = 0
+espTab.Text = "ESP"
+espTab.TextColor3 = Color3.fromRGB(20, 20, 20)
+espTab.TextSize = 12
+espTab.Font = Enum.Font.GothamMedium
+espTab.AutoButtonColor = false
+espTab.Parent = tabs
+Instance.new("UICorner", espTab).CornerRadius = UDim.new(0, 6)
 
 local content = Instance.new("ScrollingFrame")
-content.Name = "GameContent"
+content.Name = "ESPPage"
 content.Position = UDim2.fromOffset(28, 160)
 content.Size = UDim2.new(1, -56, 1, -238)
 content.BackgroundTransparency = 1
@@ -98,7 +119,10 @@ content.ScrollingDirection = Enum.ScrollingDirection.Y
 content.Parent = panel
 local layout = Instance.new("UIListLayout", content)
 layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Padding = UDim.new(0, 8)
+layout.Padding = UDim.new(0, 6)
+espTab.Activated:Connect(function()
+    content.Visible = true
+end)
 
 
 local refresh = Instance.new("TextButton")
