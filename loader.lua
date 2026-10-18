@@ -64,7 +64,7 @@ local function text(parent, value, position, size, fontSize, shade)
     return label
 end
 
-text(panel, "HONEY BUN HUB - ROUTE 4", UDim2.fromOffset(28, 26), UDim2.new(1, -100, 0, 24), 16, 240).Font = Enum.Font.GothamMedium
+text(panel, "HONEY BUN HUB - ROUTE 5", UDim2.fromOffset(28, 26), UDim2.new(1, -100, 0, 24), 16, 240).Font = Enum.Font.GothamMedium
 text(panel, current.name, UDim2.fromOffset(28, 55), UDim2.new(1, -56, 0, 20), 10, 110)
 
 local hide = Instance.new("TextButton")
@@ -158,7 +158,7 @@ if farmTab then
             local sha=revision and revision.sha
             assert(type(sha)=="string" and #sha==40 and sha:match("^%x+$"),"GitHub did not return a valid farm revision")
             local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-hub/"..sha.."/"..current.farmPath,false)
-            assert(source:find("HoneyBunFarmRouteV4",1,true),"Outdated farm blocked; rerun the latest loader")
+            assert(source:find("HoneyBunFarmRouteV5",1,true),"Outdated farm blocked; rerun the latest loader")
             assert(gui.Parent and farmContent.Parent,"Hub was closed during farm loading")
             local chunk,message=loadstring(source);assert(chunk,message)
             local mount=chunk();assert(type(mount)=="function","Farm module unavailable")

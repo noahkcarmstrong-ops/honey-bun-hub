@@ -7,7 +7,7 @@ end
 local objects, methods = {}, {}
 local meta={__index=function(o,k) if methods[k] then return methods[k] end; local value=rawget(o.props,k); if value ~= nil then return value end; for _,child in ipairs(objects) do if not rawget(child,"destroyed") and rawget(child.props,"Parent")==o and rawget(child.props,"Name")==k then return child end end end,__newindex=function(o,k,v)o.props[k]=v; if k=="CFrame" and v.Position then o.props.Position=v.Position end end}
 local function inst(class,parent)
-    local o=setmetatable({props={ClassName=class,Name=class,Parent=parent,Destroying=signal(),Activated=signal(),Enabled=true,Visible=true},attributes={}},meta);table.insert(objects,o);return o
+    local o=setmetatable({destroyed=false,props={ClassName=class,Name=class,Parent=parent,Destroying=signal(),Activated=signal(),Enabled=true,Visible=true},attributes={}},meta);table.insert(objects,o);return o
 end
 Instance={new=inst}
 function methods:IsA(c)return self.ClassName==c or c=="BasePart" and self.ClassName=="Part" end
@@ -55,6 +55,7 @@ local rep=inst("ReplicatedStorage");events.Parent=rep
 game={GameId=123,GetService=function(_,n)return({Players=players,RunService=run,ReplicatedStorage=rep,Workspace=workspace})[n]end}
 local content=inst("ScrollingFrame");local module=dofile("games/farm.lua");local cleanup=module(content)
 local function fire(text)for _,o in ipairs(content:GetChildren())do if o.ClassName=="TextButton" and o.Text==text then o.Activated:Fire();return end end;error("missing "..text)end
+local function ensureMode(text)for _=1,6 do for _,o in ipairs(content:GetChildren())do if o.ClassName=="TextButton" and o.Text==text then return end end;for _,o in ipairs(content:GetChildren())do if o.ClassName=="TextButton" and o.Text:sub(1,5)=="Mode:" then o.Activated:Fire();break end end end;error("mode unavailable: "..text)end
 local function labelText(prefix)for _,o in ipairs(content:GetChildren())do if o.ClassName=="TextLabel" and o.Text:sub(1,#prefix)==prefix then return o.Text end end end
 run.Heartbeat:Fire(.2);assert(#rob.calls==0,"idle farm makes no calls")
 local originalFrame=root.CFrame
@@ -198,6 +199,36 @@ content:Destroy();cleanup();bag.Value=0
 content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
 root.CFrame=originalFrame;fire("Start");run.Heartbeat:Fire(.2);safePart.Parent=nil;run.Heartbeat:Fire(.9)
 assert(#rob.calls==calls,"removed target cannot trigger pending request")
-content:Destroy();cleanup();safePart.Parent=safe
+content:Destroy();cleanup();safePart.Parent=safe;safe.Parent=workspace
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
+-- A streamed shop scout should rescan newly loaded targets and resume farming.
+local streamShops=inst("Folder",workspace);streamShops.Name="Shops";local streamAnchor=inst("Part",streamShops);streamAnchor.Name="OutlawGeneralStore9";streamAnchor.Position=Vector3.new(40,0,0);streamAnchor.CFrame={Position=streamAnchor.Position}
+local streamedRegister
+workspace.StreamingEnabled=true;task={spawn=function(fn)fn()end}
+function player:RequestStreamAroundAsync()safe.Parent=workspace;streamedRegister=inst("Model",workspace);streamedRegister.Name="CashRegister";local streamedOpen=inst("Part",streamedRegister);streamedOpen.Name="Open";streamedOpen.Position=Vector3.new(5,0,0);streamedOpen.CFrame={Position=streamedOpen.Position};local streamedUnion=inst("Part",streamedRegister);streamedUnion.Name="Union";local streamedActive=inst("BoolValue",streamedRegister);streamedActive.Name="Active";streamedActive.Value=true end
+safe.Parent=workspace;openSafe.Value=false;openRemote.Parent=nil;ensureMode("Mode: Registers + safes")
+bag.Value=0;root.CFrame=originalFrame;local streamCalls=#rob.calls;fire("Start");for _=1,8 do run.Heartbeat:Fire(.3) end
+assert(streamedRegister and #rob.calls==streamCalls+1 and rob.calls[#rob.calls][1]=="Register","shop streaming recovers from only a blocked safe and resumes register farming")
+fire("Stop");streamedRegister:Destroy();openRemote.Parent=safe;openSafe.Value=true;safe.Parent=workspace;workspace.StreamingEnabled=false;streamShops:Destroy();content:Destroy();cleanup()
+-- A canceled stream callback cannot move or restart the route.
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content);local queued
+local cancelShops=inst("Folder",workspace);cancelShops.Name="Shops";local cancelAnchor=inst("Part",cancelShops);cancelAnchor.Name="OutlawGeneralStore10";cancelAnchor.Position=Vector3.new(40,0,0);cancelAnchor.CFrame={Position=cancelAnchor.Position}
+workspace.StreamingEnabled=true;task.spawn=function(fn)queued=fn end;safe.Parent=nil;local cancelCalls=#rob.calls;root.CFrame=originalFrame;fire("Start");run.Heartbeat:Fire(.2);content:Destroy();cleanup();assert(queued,"stream request was queued");queued();run.Heartbeat:Fire(2)
+assert(#rob.calls==cancelCalls and root.CFrame==originalFrame,"canceled shop stream cannot restart farming")
+workspace.StreamingEnabled=false;cancelShops:Destroy();safe.Parent=workspace
+-- The idle report identifies the rejected safe contract instead of guessing cooldowns.
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
+openSafe.Value=false;openRemote.Parent=nil;copied=nil;fire("Copy farm report")
+assert(copied:find("closed safe missing OpenSafe RemoteEvent=1",1,true),"safe rejection reason is reported")
+assert(copied:find("OpenSafe=missing",1,true) and copied:find("Safe=Part=present",1,true),"safe part and opening remote are reported")
+-- Live-reported outlaw merchant names are candidate camp areas.
+local shopFolder=inst("Folder",workspace);shopFolder.Name="Shops"
+local shop=inst("Part",shopFolder);shop.Name="OutlawGeneralStore4";shop.Position=Vector3.new(7,0,0);shop.CFrame={Position=shop.Position}
+camp.Parent=nil;campFar.Parent=nil;root.CFrame=originalFrame;bag.Value=10
+fire("Start");run.Heartbeat:Fire(.2)
+assert(labelText("Returning to Workspace.Shops.OutlawGeneralStore4"),"actual outlaw store name is recognized as camp-area candidate")
+run.Heartbeat:Fire(.2);bag.Value=0;run.Heartbeat:Fire(.3)
+assert(labelText("Bag emptied; continuing route"),"shop-area return requires empty bag before resuming")
+content:Destroy();cleanup();shopFolder:Destroy();camp.Parent=workspace;campFar.Parent=workspace;openRemote.Parent=safe
 print("Grounded teleport routing, clearance, streaming gaps, server correction, damage, nested targets, cooldown backoff passed.")
 print("Farm payloads, confirmed safe opening, collection observation, full bags, bounded failures, stop, and cleanup passed.")

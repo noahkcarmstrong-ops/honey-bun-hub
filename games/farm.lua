@@ -1,4 +1,4 @@
--- HoneyBunFarmRouteV4
+-- HoneyBunFarmRouteV5
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,6 +17,8 @@ local function mount(contentFrame)
     local attempts, successes, collectedTotal, failedAttempts, lastFailure = 0, 0, 0, 0, "none"
     local nextAttemptAt = 0
     local deposit, depositTried = nil, {}
+    local scout, shopVisits, scoutRequests, scoutHops, lastScout = nil, {}, 0, 0, "none"
+    local rejected = {}
     local cashIns, campName = 0, "none"
     local targetFailures = setmetatable({}, {__mode="k"})
     local lastHealth
@@ -35,7 +37,7 @@ local function mount(contentFrame)
     end
     local function cleanup()
         if not alive then return end
-        alive, running, pending, deposit = false, false, nil, nil
+        alive, running, pending, deposit, scout = false, false, nil, nil, nil
         saveMode()
         disconnectAll()
         for _, object in ipairs(owned) do object:Destroy() end
@@ -121,28 +123,45 @@ local function mount(contentFrame)
         return remote and remote:IsA("RemoteEvent") and remote
     end
     local function validRegister(item)
-        return item:IsA("Model") and item:FindFirstChild("Open") and item.Open:IsA("BasePart")
-            and item:FindFirstChild("Union") and item.Union:IsA("BasePart")
-            and item:FindFirstChild("Active") and item.Active:IsA("BoolValue") and item.Active.Value == true
+        if not item:IsA("Model") then return false,"register is not a model" end
+        for _, name in ipairs({"Open","Union"}) do
+            local part=item:FindFirstChild(name)
+            if not part or not part:IsA("BasePart") then return false,"register missing " .. name .. " BasePart" end
+        end
+        local active=item:FindFirstChild("Active")
+        if not active or not active:IsA("BoolValue") then return false,"register missing Active BoolValue" end
+        if not active.Value then return false,"register inactive" end
+        return true
     end
     local function validSafe(item)
-        local amount = numberValue(item, "Amount")
-        local open = item:FindFirstChild("Open")
-        local part = item:FindFirstChild("Safe")
-        if not item:IsA("Model") or not amount or amount <= 0 or not open or not open:IsA("BoolValue") or not part or not part:IsA("BasePart") then return false end
-        return open.Value or (item:FindFirstChild("OpenSafe") and item.OpenSafe:IsA("RemoteEvent"))
+        if not item:IsA("Model") then return false,"safe is not a model" end
+        local amount=numberValue(item,"Amount")
+        if not amount then return false,"safe Amount unavailable" end
+        if amount <= 0 then return false,"safe empty" end
+        local open=item:FindFirstChild("Open")
+        if not open or not open:IsA("BoolValue") then return false,"safe missing Open BoolValue" end
+        local part=item:FindFirstChild("Safe")
+        if not part or not part:IsA("BasePart") then return false,"safe missing Safe BasePart" end
+        local remote=item:FindFirstChild("OpenSafe")
+        if not open.Value and (not remote or not remote:IsA("RemoteEvent")) then return false,"closed safe missing OpenSafe RemoteEvent" end
+        return true
     end
     local function isTarget(item, kind)
-        return kind == "register" and validRegister(item) or kind == "safe" and validSafe(item)
+        if kind == "register" then return validRegister(item) end
+        if kind == "safe" then return validSafe(item) end
+        return false,"unknown target type"
     end
     local function scan()
         scanned, eligible = 0, 0
+        rejected={}
         local targets = {}
         for _, item in ipairs(workspace:GetDescendants()) do
             local kind = item.Name == "CashRegister" and "register" or item.Name == "Safe" and "safe"
             if kind and item:IsA("Model") then
                 scanned = scanned + 1
-                if (mode == "both" or mode == (kind == "register" and "registers" or "safes")) and isTarget(item, kind) then
+                local valid,reason=isTarget(item,kind)
+                if not valid then rejected[reason]=(rejected[reason] or 0)+1 end
+                if (mode == "both" or mode == (kind == "register" and "registers" or "safes")) and valid then
                     eligible = eligible + 1
                     table.insert(targets, {model=item, kind=kind, part=kind == "register" and item.Open or item.Safe})
                 end
@@ -169,7 +188,7 @@ local function mount(contentFrame)
         return bag, capacity
     end
     local function stop(reason)
-        running, pending, activeRoot, deposit = false, nil, nil, nil
+        running, pending, activeRoot, deposit, scout = false, nil, nil, nil, nil
         startButton.Text = "Start"
         setStatus(reason or "Stopped")
     end
@@ -231,6 +250,84 @@ local function mount(contentFrame)
         lastMovement = target.name or target.model:GetFullName()
         return true, true
     end
+    local function shopAnchors()
+        local result={}
+        local shops=workspace:FindFirstChild("Shops")
+        if not shops then return result end
+        for _, item in ipairs(shops:GetChildren()) do
+            if item:IsA("Model") or item:IsA("BasePart") then
+                local ok,pos=pcall(function()
+                    if item:IsA("BasePart") then return item.Position end
+                    return item:GetPivot().Position
+                end)
+                if ok and pos then
+                    table.insert(result,{model=item,part={Position=pos},name=item:GetFullName(),key=item,allowOwnGround=true})
+                end
+            end
+        end
+        return result
+    end
+    local function beginScout(root)
+        local regions={}
+        for _, anchor in ipairs(shopAnchors()) do
+            local duplicate=false
+            for _, region in ipairs(regions) do
+                if (anchor.part.Position-region.part.Position).Magnitude < 150 then duplicate=true;break end
+            end
+            if not duplicate then table.insert(regions,anchor) end
+        end
+        local candidate,rank,distance
+        for _, anchor in ipairs(regions) do
+            local visit=shopVisits[anchor.key]
+            local age=visit or -math.huge
+            local d=(anchor.part.Position-root.Position).Magnitude
+            if (not visit or elapsed-visit >= 30) and (not candidate or age < rank or (age==rank and d < distance)) then
+                candidate,rank,distance=anchor,age,d
+            end
+        end
+        if not candidate then
+            setStatus(#regions==0 and "No available targets; no shop regions loaded" or "Waiting for region/target retry timers")
+            return
+        end
+        shopVisits[candidate.key]=elapsed
+        lastScout=candidate.name
+        local state={target=candidate,phase="stream",ready=true,deadline=elapsed+6}
+        scout=state
+        setStatus("Loading targets near " .. candidate.name)
+        if workspace.StreamingEnabled and player.RequestStreamAroundAsync and task and task.spawn then
+            state.ready=false;scoutRequests=scoutRequests+1
+            task.spawn(function()
+                local ok=pcall(function() player:RequestStreamAroundAsync(candidate.part.Position,4) end)
+                if alive and running and scout==state then
+                    state.ready=true
+                    if not ok then lastFailure="region streaming request failed" end
+                end
+            end)
+        end
+    end
+    local function processScout(root)
+        local state=scout
+        if state.phase == "stream" then
+            if not state.ready and elapsed < state.deadline then return end
+            if nearest(scan(),root) then scout=nil;nextAttemptAt=elapsed;return end
+            local ok,moved=moveToTarget(state.target,root)
+            if not ok then lastFailure="scout: " .. moved;scout=nil;nextAttemptAt=elapsed+1;return end
+            if moved then scoutHops=scoutHops+1 end
+            state.phase,state.due,state.deadline="settle",elapsed+(moved and 0.8 or 0.2),elapsed+3
+            setStatus("Scanning region near " .. state.target.name)
+            return
+        end
+        if (root.Position-state.target.part.Position).Magnitude > 20 then
+            lastFailure="scout landing rejected";stop("Stopped: " .. lastFailure);return
+        end
+        local humanoid=player.Character:FindFirstChildWhichIsA("Humanoid")
+        local velocity=root.AssemblyLinearVelocity
+        if humanoid.FloorMaterial == Enum.Material.Air or (velocity and velocity.Magnitude > 12) then
+            if elapsed >= state.deadline then lastFailure="scout landing did not settle";stop("Stopped: " .. lastFailure) end
+            return
+        end
+        if elapsed >= state.due then scout=nil;nextAttemptAt=elapsed end
+    end
     local function campCandidates()
         local result = {}
         for _, item in ipairs(workspace:GetDescendants()) do
@@ -248,6 +345,9 @@ local function mount(contentFrame)
                     table.insert(result,{model=item,part={Position=pos},name=item:GetFullName(),key=item,allowOwnGround=true})
                 end
             end
+        end
+        for _, anchor in ipairs(shopAnchors()) do
+            if anchor.model.Name:match("^OutlawGeneralStore%d+$") then table.insert(result,anchor) end
         end
         return result
     end
@@ -378,6 +478,9 @@ local function mount(contentFrame)
         local bag, capacity = bagInfo()
         scan()
         local paths = {}
+        local reasons={}
+        for reason,count in pairs(rejected) do table.insert(reasons,reason .. "=" .. count) end
+        table.sort(reasons)
         local prompts = {}
         local campPaths = {}
         for _, item in ipairs(workspace:GetDescendants()) do
@@ -414,10 +517,19 @@ local function mount(contentFrame)
                     return child.ClassName.."="..value
                 end
                 local name = item.GetFullName and item:GetFullName() or item.Name
-                table.insert(paths, tostring(name) .. " {Open=" .. childInfo("Open") .. ", Amount=" .. childInfo("Amount") .. ", Active=" .. childInfo("Active") .. "}")
+                local descendants={}
+                if item.Name == "Safe" then
+                    for _, child in ipairs(item:GetDescendants()) do
+                        if #descendants >= 24 then break end
+                        if child:IsA("BasePart") or child:IsA("RemoteEvent") or child:IsA("RemoteFunction") or child:IsA("ProximityPrompt") then
+                            table.insert(descendants,child.Name .. ":" .. child.ClassName)
+                        end
+                    end
+                end
+                table.insert(paths, tostring(name) .. " {Open=" .. childInfo("Open") .. ", Amount=" .. childInfo("Amount") .. ", Active=" .. childInfo("Active") .. ", Safe=" .. childInfo("Safe") .. ", OpenSafe=" .. childInfo("OpenSafe") .. ", Children=" .. table.concat(descendants,"|") .. "}")
             end
         end
-        return table.concat({"Honey Bun Hub farm report", "Mode: " .. modeText(), "Running: " .. tostring(running), "Bag: " .. tostring(bag or "unavailable") .. "/" .. tostring(capacity or "unavailable"), "Movement: checked teleport route V4", "Teleports: " .. teleports, "Skipped landings: " .. skippedLandings, "Last teleport: " .. lastMovement, "Health: " .. tostring(lastHealth or "unknown"), "Cash-in: nearest recognized loaded camp; historical fallback", "Position: " .. position, "Camp objects: " .. (#campPaths > 0 and table.concat(campPaths, ", ") or "none loaded"), "Camp: " .. campName, "Confirmed cash-ins: " .. cashIns, "Loaded camp candidates: " .. #campCandidates(), "Rob remote present: " .. tostring(validRemote() ~= nil), "Scanned: " .. scanned, "Eligible: " .. eligible, "Attempts: " .. attempts, "Confirmed bag increases: " .. successes, "Failed attempts: " .. failedAttempts, "Last failure: " .. lastFailure, "Possible drop-off prompts (unverified): " .. (#prompts > 0 and table.concat(prompts, ", ") or "none loaded"), "Targets: " .. (#paths > 0 and table.concat(paths, ", ") or "none")}, "\n")
+        return table.concat({"Honey Bun Hub farm report", "Mode: " .. modeText(), "Running: " .. tostring(running), "Bag: " .. tostring(bag or "unavailable") .. "/" .. tostring(capacity or "unavailable"), "Movement: checked teleport route V5", "Teleports: " .. teleports, "Skipped landings: " .. skippedLandings, "Last teleport: " .. lastMovement, "Health: " .. tostring(lastHealth or "unknown"), "Cash-in: nearest recognized loaded camp; historical fallback", "Position: " .. position, "Camp objects: " .. (#campPaths > 0 and table.concat(campPaths, ", ") or "none loaded"), "Camp: " .. campName, "Confirmed cash-ins: " .. cashIns, "Loaded camp candidates: " .. #campCandidates(), "Rob remote present: " .. tostring(validRemote() ~= nil), "Scanned: " .. scanned, "Eligible: " .. eligible, "Rejected targets: " .. (#reasons>0 and table.concat(reasons,", ") or "none"), "Shop anchors: " .. #shopAnchors(), "Region requests: " .. scoutRequests, "Region hops: " .. scoutHops, "Last region: " .. lastScout, "Region scan active: " .. tostring(scout~=nil), "Attempts: " .. attempts, "Confirmed bag increases: " .. successes, "Failed attempts: " .. failedAttempts, "Last failure: " .. lastFailure, "Possible drop-off prompts (unverified): " .. (#prompts > 0 and table.concat(prompts, ", ") or "none loaded"), "Targets: " .. (#paths > 0 and table.concat(paths, ", ") or "none")}, "\n")
     end
     modeButton.Activated:Connect(function()
         mode = mode == "both" and "registers" or mode == "registers" and "safes" or "both"
@@ -430,7 +542,7 @@ local function mount(contentFrame)
         if bag == nil or not capacity or capacity <= 0 then setStatus("Cannot start: bag data unavailable"); return end
         if not validRemote() then setStatus("Cannot start: Rob remote unavailable"); return end
         scan()
-        depositTried={};deposit=nil
+        depositTried={};deposit=nil;scout=nil
         running, stepClock, failedAttempts, nextAttemptAt, activeRoot = true, 0, 0, elapsed, characterRoot()
         lastHealth = player.Character:FindFirstChildWhichIsA("Humanoid").Health
         startButton.Text = "Stop"; setStatus("Running teleport route; cooldowns unchanged")
@@ -463,7 +575,9 @@ local function mount(contentFrame)
         if stepClock < 0.2 then return end
         stepClock = 0
         if not bag or not capacity or capacity <= 0 then stop("Stopped: bag data unavailable"); return end
+        if bag >= capacity and scout then scout=nil end
         if deposit then processDeposit(root,bag);return end
+        if scout then processScout(root);return end
         if bag == 0 and next(depositTried) then
             cashIns=cashIns+1;depositTried={};failedAttempts=0;nextAttemptAt=elapsed
             setStatus("Bag emptied; continuing route")
@@ -484,7 +598,7 @@ local function mount(contentFrame)
         if elapsed >= nextAttemptAt then
             nextAttemptAt=elapsed+1
             local target = nearest(scan(), root)
-            if target then attempt(target, bag) else setStatus("Waiting for loaded targets or retry timers") end
+            if target then attempt(target, bag) else beginScout(root) end
         end
     end))
     return cleanup
