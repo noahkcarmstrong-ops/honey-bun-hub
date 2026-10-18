@@ -2,6 +2,20 @@
 -- Client-side visuals only: no hitbox or character properties are changed.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+-- Read only explicit bounty fields exposed to this client; missing is not zero.
+local function bountyAmount(player)
+    local function number(value)
+        if type(value)=="string" then value=tonumber((value:gsub("[$,]",""))) end
+        if type(value)=="number" and value==value and value>=0 and value<math.huge then return math.floor(value) end
+    end
+    local amount=number(player:GetAttribute("Bounty"))
+    if amount then return amount end
+    local stats=player:FindFirstChild("leaderstats")
+    local value=stats and stats:FindFirstChild("Bounty") or player:FindFirstChild("Bounty")
+    if value and (value:IsA("IntValue") or value:IsA("NumberValue") or value:IsA("StringValue")) then
+        return number(value.Value)
+    end
+end
 local worldMount, worldError
 do
     local ok, result = pcall(function()
@@ -38,7 +52,7 @@ return {
         local localPlayer, playerGui = Players.LocalPlayer, Players.LocalPlayer:WaitForChild("PlayerGui")
         local old = playerGui:FindFirstChild("HoneyBunWestboundESP")
         if old then old:Destroy() end
-        local s = {enabled=false,cowboys=true,outlaws=true,others=true,labels=true,names=true,distance=true,health=true,tracers=false,chams=false,hitbox=false,visibleOnly=false,maxDistance=math.huge,teamMode="All",style="Labels"}
+        local s = {enabled=false,cowboys=true,outlaws=true,others=true,labels=true,names=true,distance=true,health=true,bounty=false,tracers=false,chams=false,hitbox=false,visibleOnly=false,maxDistance=math.huge,teamMode="All",style="Labels"}
         local choices, choiceIndex = {500,1000,2500,math.huge}, 4
         local colors = {Cowboys=Color3.fromRGB(75,145,235),Outlaws=Color3.fromRGB(220,75,75),Other=Color3.fromRGB(165,165,165)}
         local connections, records, ownedRows, advancedRows, advancedControls, dead = {}, {}, {}, {}, {}, false
@@ -114,6 +128,7 @@ return {
         advancedRow("names","Names",s.names,function(v)s.names=v end)
         advancedRow("distance","Distance",s.distance,function(v)s.distance=v end)
         advancedRow("health","Health",s.health,function(v)s.health=v end)
+        advancedRow("bounty","Outlaw bounty",s.bounty,function(v)s.bounty=v end)
         advancedRow("tracers","Tracers",s.tracers,function(v)s.tracers=v end)
         advancedRow("chams","Chams",s.chams,function(v)s.chams=v end)
         advancedRow("hitbox","Visual hitbox",s.hitbox,function(v)s.hitbox=v end)
@@ -209,10 +224,17 @@ return {
             end
             local color,rootPoint=colors[team],camera:WorldToViewportPoint(root.Position)
             if rootPoint.Z<=0 then hide(record); return end
-            record.name.Visible=s.labels and (s.names or s.distance or s.health)
+            record.name.Visible=s.labels and (s.names or s.distance or s.health or (s.bounty and team=="Outlaws"))
             if record.name.Visible then
                 local parts={}; if s.names then table.insert(parts,(record.player.DisplayName or record.player.Name).." ["..team.."]") end
                 if s.distance then table.insert(parts,string.format("[%d]",math.floor(distance))) end; if s.health then table.insert(parts,string.format("HP %d",math.floor(humanoid.Health))) end
+                if s.bounty and team=="Outlaws" then
+                    if heavy or not record.bountyChecked then
+                        record.bounty=bountyAmount(record.player); record.bountyChecked=true
+                    end
+                    table.insert(parts,record.bounty and string.format("\nBounty $%d",record.bounty) or "\nBounty unavailable")
+                end
+                record.name.Size=UDim2.fromOffset(320,s.bounty and team=="Outlaws" and 36 or 20)
                 record.name.Text,record.name.TextColor3=table.concat(parts,"  "),color; record.name.Position=UDim2.fromOffset(rootPoint.X,rootPoint.Y-28)
             end
             record.tracer.Visible=s.tracers; record.tracer.BackgroundColor3=color

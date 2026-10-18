@@ -19,6 +19,8 @@ Westbound is detected automatically by universe ID. Open the top **ESP** tab. Pl
 
 The hitbox option is a visual outline only and does not alter character hitboxes. Team classification uses actual team names containing Cowboy or Outlaw; other roles stay under Other teams.
 
+**Outlaw bounty** is under **More player options**. With Player ESP and Labels enabled, it adds a second line to outlaw markers. It reads an explicit `Bounty` player attribute, `leaderstats.Bounty`, or a direct `Bounty` value, updating about every 0.15 seconds. If no readable amount exists, it shows **Bounty unavailable**, never an assumed zero. These field paths still need verification in live Westbound.
+
 Animal and chest discovery uses model names, tags, and attributes. Exact live Westbound object names have not been inspected. Only chests with a readable unlooted state or positive gold are shown. Looted or empty chests are hidden. Unavailable gold is omitted from the label; amounts are never guessed. Detection covers objects streamed to the client, with no fixed target cap. Unloaded objects cannot be detected. Loot flags refresh about every 0.1 seconds; gold amounts refresh about once per second. Player markers update every frame.
 
 ## Other games and future additions
@@ -34,3 +36,5 @@ The loader requires an environment with HttpGet and loadstring; it is not a norm
 ## Validation
 
 Lua syntax checks and simulated lifecycle tests covered respawns, team filters, switches, player removal, missing cameras, animal classification, gold labels, late tags, and cleanup. Live Westbound rendering and metadata still require in-game verification.
+
+Run the player and bounty checks with `npx --yes --package=fengari-node-cli fengari tests/player-esp.lua`.
