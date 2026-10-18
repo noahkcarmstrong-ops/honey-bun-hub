@@ -36,7 +36,9 @@ function game:HttpGet(url)
     if url:find('/loader.lua',1,true) then return '__test_loader__' end
     if url:find('/games/farm.lua',1,true) then
         if tabTest.failFarm then error('Simulated farm load failure') end
-        return 'return function(page) tabTest.farmMounts=tabTest.farmMounts+1; return function() tabTest.farmCleanups=tabTest.farmCleanups+1 end end'
+        if tabTest.staleFarm then return 'return function() error("stale farm executed") end' end
+        assert(url:find('/3356fd1/',1,true),'Farm uses immutable safe revision')
+        return '-- Nearby targets only\nreturn function(page) tabTest.farmMounts=tabTest.farmMounts+1; return function() tabTest.farmCleanups=tabTest.farmCleanups+1 end end'
     end
     return 'return {name="WESTBOUND",description="",farmPath="games/farm.lua",mount=function(page) tabTest.espMounts=tabTest.espMounts+1; return function() tabTest.espCleanups=tabTest.espCleanups+1 end end}'
 end
@@ -53,7 +55,9 @@ assert(espPage.Visible and not farmPage.Visible,'ESP opens first')
 assert(tabTest.farmMounts==0,'Farm is not loaded until selected')
 farm.Activated:Fire()
 assert(farmPage.Visible and not espPage.Visible,'Farm tab selects its own page')
-tabTest.failFarm=false;farm.Activated:Fire();farm.Activated:Fire()
+tabTest.failFarm=false;tabTest.staleFarm=true;farm.Activated:Fire()
+assert(tabTest.farmMounts==0,'Outdated farm source is blocked before execution')
+tabTest.staleFarm=false;farm.Activated:Fire();farm.Activated:Fire()
 assert(tabTest.farmMounts==1,'Failed farm loading can retry and successful loading is reused')
 esp.Activated:Fire();assert(espPage.Visible and not farmPage.Visible,'ESP remains accessible')
 local refresh
