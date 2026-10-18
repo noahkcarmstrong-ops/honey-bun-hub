@@ -8,7 +8,7 @@ local current = {name = "UNIVERSAL", description = "No game-specific features ad
 local path = games[game.GameId]
 if path then
     local ok, result = pcall(function()
-        local source = game:HttpGet(base .. path, false)
+        local source = game:HttpGet(base .. path .. "?refresh=" .. tostring(DateTime.now().UnixTimestampMillis), false)
         local chunk, message = loadstring(source)
         assert(chunk, message)
         return chunk()
@@ -83,6 +83,39 @@ line.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 line.BorderSizePixel = 0
 text(panel, "OVERVIEW", UDim2.fromOffset(28, 120), UDim2.new(1, -56, 0, 20), 11, 120)
 
+
+local refresh = Instance.new("TextButton")
+refresh.Position = UDim2.new(1, -126, 0, 112)
+refresh.Size = UDim2.fromOffset(98, 32)
+refresh.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+refresh.BorderSizePixel = 0
+refresh.Text = "Refresh"
+refresh.TextColor3 = Color3.fromRGB(220, 220, 220)
+refresh.TextSize = 12
+refresh.Font = Enum.Font.GothamMedium
+refresh.Parent = panel
+Instance.new("UICorner", refresh).CornerRadius = UDim.new(0, 6)
+
+local refreshing = false
+refresh.Activated:Connect(function()
+    if refreshing then return end
+    refreshing = true
+    refresh.Text = "Refreshing..."
+    local ok, message = pcall(function()
+        local url = base .. "loader.lua?refresh=" .. tostring(DateTime.now().UnixTimestampMillis)
+        local source = game:HttpGet(url, false)
+        local chunk, compileError = loadstring(source)
+        assert(chunk, compileError)
+        chunk()
+    end)
+    if not ok then
+        warn("Honey Bun Hub: refresh failed", message)
+        if refresh.Parent then
+            refresh.Text = "Retry refresh"
+        end
+    end
+    refreshing = false
+end)
 
 local footerLine = line:Clone()
 footerLine.Position = UDim2.new(0, 28, 1, -64)
