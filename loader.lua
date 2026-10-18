@@ -1,7 +1,5 @@
 -- Honey Bun Hub: one entry point for every supported game.
 local base = "https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-hub/main/"
--- Immutable safe farm revision: a cached main URL must not revive teleport routing.
-local safeFarmBase = "https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-hub/3356fd1/"
 -- Add future games here by universe ID (game.GameId).
 local games = {
     [873703865] = "games/westbound.lua",
@@ -66,7 +64,7 @@ local function text(parent, value, position, size, fontSize, shade)
     return label
 end
 
-text(panel, "HONEY BUN HUB · SAFE 2", UDim2.fromOffset(28, 26), UDim2.new(1, -100, 0, 24), 18, 240).Font = Enum.Font.GothamMedium
+text(panel, "HONEY BUN HUB - ROUTE 3", UDim2.fromOffset(28, 26), UDim2.new(1, -100, 0, 24), 16, 240).Font = Enum.Font.GothamMedium
 text(panel, current.name, UDim2.fromOffset(28, 55), UDim2.new(1, -56, 0, 20), 10, 110)
 
 local hide = Instance.new("TextButton")
@@ -154,8 +152,13 @@ if farmTab then
         farmLoading=true
         if farmNotice then farmNotice:Destroy();farmNotice=nil end
         local ok,result=pcall(function()
-            local source=game:HttpGet(safeFarmBase..current.farmPath,false)
-            assert(source:find("Nearby targets only",1,true) and not source:find("root.CFrame = target.part.CFrame",1,true),"Outdated farm blocked; rerun the latest loader")
+            local stamp=tostring(DateTime.now().UnixTimestampMillis)
+            local revisionUrl="https://api.github.com/repos/noahkcarmstrong-ops/honey-bun-hub/commits/main?refresh="..stamp
+            local revision=game:GetService("HttpService"):JSONDecode(game:HttpGet(revisionUrl,false))
+            local sha=revision and revision.sha
+            assert(type(sha)=="string" and #sha==40 and sha:match("^%x+$"),"GitHub did not return a valid farm revision")
+            local source=game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-hub/"..sha.."/"..current.farmPath,false)
+            assert(source:find("HoneyBunFarmRouteV3",1,true),"Outdated farm blocked; rerun the latest loader")
             assert(gui.Parent and farmContent.Parent,"Hub was closed during farm loading")
             local chunk,message=loadstring(source);assert(chunk,message)
             local mount=chunk();assert(type(mount)=="function","Farm module unavailable")

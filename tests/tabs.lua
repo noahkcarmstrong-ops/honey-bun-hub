@@ -45,8 +45,8 @@ function game:HttpGet(url)
     if url:find('/games/farm.lua',1,true) then
         if tabTest.failFarm then error('Simulated farm load failure') end
         if tabTest.staleFarm then return 'return function() error("stale farm executed") end' end
-        assert(url:find('/3356fd1/',1,true),'Farm uses immutable safe revision')
-        return '-- Nearby targets only\nreturn function(page) tabTest.farmMounts=tabTest.farmMounts+1; return function() tabTest.farmCleanups=tabTest.farmCleanups+1 end end'
+        assert(url:find('/'..string.rep('a',40)..'/games/farm.lua',1,true),'Farm uses latest immutable revision')
+        return '-- HoneyBunFarmRouteV3\nreturn function(page) tabTest.farmMounts=tabTest.farmMounts+1; return function() tabTest.farmCleanups=tabTest.farmCleanups+1 end end'
     end
     return 'return {name="WESTBOUND",description="",farmPath="games/farm.lua",mount=function(page) tabTest.espMounts=tabTest.espMounts+1; return function() tabTest.espCleanups=tabTest.espCleanups+1 end end}'
 end

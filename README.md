@@ -30,10 +30,12 @@ Animal and chest discovery uses model names, tags, and attributes. Exact live We
 The **FARM** tab beside **ESP** contains a register/safe route based on a historical Westbound implementation. Its live compatibility and payout rate still require verification. No `$100k/min` rate or removal of server cooldowns is promised; research and sources are in [docs/farming-research.md](docs/farming-research.md).
 
 1. Choose registers, safes, or both, then press **Start**.
-2. Move normally within 12 studs of a target. The farm never teleports your character.
+2. The route chooses the nearest loaded register or safe and teleports beside it only if ground and standing clearance checks pass.
 3. Use **Stop** at any time. Damage, death, or a full bag also stops the farm. Cash in normally when full.
 
-Teleport routing is disabled following a reported death; the cause has not been confirmed in a live game. Damage detection stops later actions but cannot prevent damage or guarantee survival. Automatic nearest cash-in is pending verification of the live game's drop-off objects. The manual **Set cash-in spot** control has been removed.
+**ROUTE 3** restores teleport routing with checked landings. Targets nested in folders are detected. Each distant target needs nearby loaded, anchored, nearly level ground, no water, and space for a standing character. The route clears existing movement velocity, pauses for landing, and stops if the player takes damage, remains airborne, or is pushed out of reach. Failed landings are skipped for 15 seconds. Successful targets are skipped for 30 seconds; this is a local retry delay, not a detected server cooldown. Safes must replicate an open state before the collection request.
+
+These checks reduce observable risks but cannot prevent a server from killing a teleporting player. No live survival, whole-map coverage, or payout rate has been verified. Unloaded targets and terrain cannot be routed to. Automatic nearest cash-in remains unverified; full bags stop for normal cash-in. The manual **Set cash-in spot** control remains removed.
 
 The farm tracks actual bag increases and stops after repeated unconfirmed attempts. **Copy farm report** includes target details and any loaded prompts mentioning cash, deposit, or bag; those prompts are diagnostic clues, not verified destinations. The selected mode is remembered for the current session; running always resets to stopped on reload.
 
