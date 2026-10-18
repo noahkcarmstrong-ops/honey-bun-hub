@@ -7,16 +7,15 @@ local function mount(contentFrame)
     local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
     local gameKey = tostring(game.GameId or 0)
     local modeAttribute = "HoneyBunFarmMode_" .. gameKey
-    local cashInAttribute = "HoneyBunFarmCashIn_" .. gameKey
     local mode = playerGui and playerGui:GetAttribute(modeAttribute) or "both"
     if mode ~= "registers" and mode ~= "safes" then mode = "both" end
-    local cashIn = playerGui and playerGui:GetAttribute(cashInAttribute)
     local alive, running = true, false
     local stepClock, elapsed = 0, 0
     local activeRoot
     local pending, targetBackoff, scanned, eligible = nil, {}, 0, 0
     local attempts, successes, collectedTotal, failedAttempts, lastFailure = 0, 0, 0, 0, "none"
-    local nextAttemptAt, depositStarted, depositBag, depositMoved = 0, nil, nil, false
+    local nextAttemptAt = 0
+    local lastHealth
     local connections, owned = {}, {}
     local statusLabel, bagLabel, collectedLabel
 
@@ -83,7 +82,7 @@ local function mount(contentFrame)
     bagLabel = label("Bag: unavailable", 102)
     collectedLabel = label("Collected into bag: 0", 103)
     local modeButton = row("Mode: Registers + safes", 104)
-    local cashInButton = row("Set cash-in spot", 105)
+    label("Nearby targets only (12 studs). Teleport disabled after reported death.", 105)
     local startButton = row("Start", 106)
     local reportButton = row("Copy farm report", 107)
 
@@ -151,7 +150,7 @@ local function mount(contentFrame)
         for _, target in ipairs(targets) do
             if not targetBackoff[target.model] or elapsed >= targetBackoff[target.model] then
                 local distance = (target.part.Position - root.Position).Magnitude
-                if not bestDistance or distance < bestDistance then best, bestDistance = target, distance end
+                if distance <= 12 and (not bestDistance or distance < bestDistance) then best, bestDistance = target, distance end
             end
         end
         return best
@@ -165,7 +164,7 @@ local function mount(contentFrame)
         return bag, capacity
     end
     local function stop(reason)
-        running, pending, depositStarted, depositBag, depositMoved, activeRoot = false, nil, nil, nil, false, nil
+        running, pending, activeRoot = false, nil, nil
         startButton.Text = "Start"
         setStatus(reason or "Stopped")
     end
@@ -173,7 +172,7 @@ local function mount(contentFrame)
         local root = characterRoot()
         local remote = validRemote()
         if not root or not remote then stop("Stopped: character or Rob remote unavailable"); return end
-        root.CFrame = target.part.CFrame
+        if (target.part.Position - root.Position).Magnitude > 12 then return end
         nextAttemptAt = elapsed + 1
         pending = {target=target, bag=bag, phase=target.kind == "safe" and not target.model.Open.Value and "openSafe" or "rob", due=elapsed + 0.35}
         attempts = attempts + 1
@@ -185,6 +184,10 @@ local function mount(contentFrame)
             if failedAttempts >= 3 then stop("Repeated collection failures; scan needed") end
         end
         local target, remote = pending.target, validRemote()
+        local root = characterRoot()
+        if not root or (target.part.Position - root.Position).Magnitude > 12 then
+            pending = nil; setStatus("Waiting: move within 12 studs of a target"); return
+        end
         if not remote or not target.model.Parent or not isTarget(target.model, target.kind) then
             failTarget("target or Rob remote changed")
             return
@@ -209,6 +212,16 @@ local function mount(contentFrame)
         local bag, capacity = bagInfo()
         scan()
         local paths = {}
+        local prompts = {}
+        for _, item in ipairs(workspace:GetDescendants()) do
+            if item:IsA("ProximityPrompt") then
+                local text = tostring(item.ActionText or "") .. " " .. tostring(item.ObjectText or "")
+                local lower = text:lower()
+                if #prompts < 12 and (lower:find("cash", 1, true) or lower:find("deposit", 1, true) or lower:find("bag", 1, true)) then
+                    table.insert(prompts, item:GetFullName() .. " [" .. text .. "]")
+                end
+            end
+        end
         for _, item in ipairs(workspace:GetChildren()) do
             if #paths >= 8 then break end
             if item.Name == "CashRegister" or item.Name == "Safe" then
@@ -223,28 +236,23 @@ local function mount(contentFrame)
                 table.insert(paths, tostring(name) .. " {Open=" .. childInfo("Open") .. ", Amount=" .. childInfo("Amount") .. ", Active=" .. childInfo("Active") .. "}")
             end
         end
-        return table.concat({"Honey Bun Hub farm report", "Mode: " .. modeText(), "Running: " .. tostring(running), "Bag: " .. tostring(bag or "unavailable") .. "/" .. tostring(capacity or "unavailable"), "Cash-in saved: " .. tostring(cashIn ~= nil), "Rob remote present: " .. tostring(validRemote() ~= nil), "Scanned: " .. scanned, "Eligible: " .. eligible, "Attempts: " .. attempts, "Confirmed bag increases: " .. successes, "Failed attempts: " .. failedAttempts, "Last failure: " .. lastFailure, "Targets: " .. (#paths > 0 and table.concat(paths, ", ") or "none")}, "\n")
+        return table.concat({"Honey Bun Hub farm report", "Mode: " .. modeText(), "Running: " .. tostring(running), "Bag: " .. tostring(bag or "unavailable") .. "/" .. tostring(capacity or "unavailable"), "Movement: nearby only; teleport disabled", "Health: " .. tostring(lastHealth or "unknown"), "Cash-in: automatic detection unverified", "Rob remote present: " .. tostring(validRemote() ~= nil), "Scanned: " .. scanned, "Eligible: " .. eligible, "Attempts: " .. attempts, "Confirmed bag increases: " .. successes, "Failed attempts: " .. failedAttempts, "Last failure: " .. lastFailure, "Possible drop-off prompts (unverified): " .. (#prompts > 0 and table.concat(prompts, ", ") or "none loaded"), "Targets: " .. (#paths > 0 and table.concat(paths, ", ") or "none")}, "\n")
     end
     modeButton.Activated:Connect(function()
         mode = mode == "both" and "registers" or mode == "registers" and "safes" or "both"
         modeButton.Text = "Mode: " .. modeText(); saveMode()
     end)
-    cashInButton.Activated:Connect(function()
-        local root = characterRoot()
-        if root and playerGui then cashIn = root.CFrame; pcall(function() playerGui:SetAttribute(cashInAttribute, cashIn) end); setStatus("Cash-in spot saved") else setStatus("Cannot save spot: living character required") end
-    end)
     startButton.Activated:Connect(function()
         if running then stop("Stopped"); return end
         if not characterRoot() then setStatus("Cannot start: living character required"); return end
-        local cashInValid = cashIn and ((typeof and typeof(cashIn) == "CFrame") or (type(cashIn) == "table" and cashIn.Position))
-        if not cashInValid then setStatus("Cannot start: set a cash-in spot first"); return end
         local bag, capacity = bagInfo()
         if bag == nil or not capacity or capacity <= 0 then setStatus("Cannot start: bag data unavailable"); return end
         if not validRemote() then setStatus("Cannot start: Rob remote unavailable"); return end
         local targets = scan()
         if #targets == 0 then setStatus("Cannot start: no valid targets detected"); return end
         running, stepClock, failedAttempts, nextAttemptAt, activeRoot = true, 0, 0, elapsed, characterRoot()
-        startButton.Text = "Stop"; setStatus("Running; server cooldown unchanged")
+        lastHealth = player.Character:FindFirstChildWhichIsA("Humanoid").Health
+        startButton.Text = "Stop"; setStatus("Running nearby; teleport disabled")
     end)
     reportButton.Activated:Connect(function()
         local text = report()
@@ -269,6 +277,9 @@ local function mount(contentFrame)
         stepClock = 0
         local root = characterRoot()
         if not root or root~=activeRoot then stop("Stopped: character unavailable or changed"); return end
+        local health = player.Character:FindFirstChildWhichIsA("Humanoid").Health
+        if lastHealth and health < lastHealth then lastHealth = health; stop("Stopped: damage detected"); return end
+        lastHealth = health
         if not bag or not capacity or capacity <= 0 then stop("Stopped: bag data unavailable"); return end
         if pending then
             if bag and pending.bag and bag > pending.bag then local delta = bag - pending.bag; successes = successes + 1; collectedTotal = collectedTotal + delta; collectedLabel.Text = "Collected into bag: +" .. tostring(delta) .. " (total amount: " .. tostring(collectedTotal) .. ")"; pending = nil; failedAttempts = 0
@@ -279,21 +290,13 @@ local function mount(contentFrame)
             return
         end
         if bag >= capacity then
-            if not depositStarted then depositStarted, depositBag = elapsed, bag end
-            if not depositMoved then root.CFrame, depositMoved = cashIn, true end
-            if bag < depositBag then
-                depositStarted, depositBag, depositMoved = nil, nil, false
-                setStatus("Running; deposited")
-            elseif elapsed - depositStarted >= 10 then
-                stop("Stopped: cash-in did not reduce the bag")
-            end
+            stop("Bag full: cash in normally; automatic drop-off unverified")
             return
         end
-        if depositStarted then depositStarted, depositBag, depositMoved = nil, nil, false end
         if elapsed >= nextAttemptAt then
             nextAttemptAt=elapsed+1
             local target = nearest(scan(), root)
-            if target then attempt(target, bag) else setStatus("Running; no eligible targets") end
+            if target then attempt(target, bag) else setStatus("Waiting: move within 12 studs of a target") end
         end
     end))
     return cleanup

@@ -29,13 +29,13 @@ Animal and chest discovery uses model names, tags, and attributes. Exact live We
 
 The **FARM** tab beside **ESP** contains a register/safe route based on a historical Westbound implementation. Its live compatibility and payout rate still require verification. No `$100k/min` rate or removal of server cooldowns is promised; research and sources are in [docs/farming-research.md](docs/farming-research.md).
 
-1. Stand at the spot where the game empties your robbery bag and choose **Set cash-in spot**.
-2. Choose registers, safes, or both, then press **Start**.
-3. Use **Stop** at any time. Refresh also stops the farm; it never resumes automatically.
+1. Choose registers, safes, or both, then press **Start**.
+2. Move normally within 12 studs of a target. The farm never teleports your character.
+3. Use **Stop** at any time. Damage, death, or a full bag also stops the farm. Cash in normally when full.
 
-The farm tracks actual increases in your bag, returns to your chosen spot when full, and stops if collection or cash-in cannot be confirmed. If setup is unsupported or attempts do not collect anything, use **Copy farm report** and send the report for diagnosis. The route does not alter local money or cooldown values.
+Teleport routing is disabled following a reported death; the cause has not been confirmed in a live game. Damage detection stops later actions but cannot prevent damage or guarantee survival. Automatic nearest cash-in is pending verification of the live game's drop-off objects. The manual **Set cash-in spot** control has been removed.
 
-The selected mode and cash-in spot are remembered for the current game session. Running is always reset to stopped when the hub reloads.
+The farm tracks actual bag increases and stops after repeated unconfirmed attempts. **Copy farm report** includes target details and any loaded prompts mentioning cash, deposit, or bag; those prompts are diagnostic clues, not verified destinations. The selected mode is remembered for the current session; running always resets to stopped on reload.
 
 ## Other games and future additions
 
