@@ -20,6 +20,7 @@ function methods:IsDescendantOf(other)local node=self.Parent;while node do if no
 function methods:GetFullName()return self.Parent and self.Parent:GetFullName().."."..self.Name or self.Name end
 function methods:GetAttribute(n)return self.attributes[n]end
 function methods:SetAttribute(n,v)self.attributes[n]=v end
+function methods:GetPivot()return self.PrimaryPart and self.PrimaryPart.CFrame or CFrame.new(0,0,0)end
 function methods:Destroy()if self.destroyed then return end;self.destroyed=true;self.Destroying:Fire();for _,c in ipairs(self:GetChildren())do c:Destroy()end;self.Parent=nil end
 local vm={__sub=function(a,b)return Vector3.new(a.X-b.X,a.Y-b.Y,a.Z-b.Z)end,__index=function(v,k)if k=="Magnitude"then return math.sqrt(v.X*v.X+v.Y*v.Y+v.Z*v.Z)end end}
 RaycastParams={new=function()return {} end};OverlapParams={new=function()return {} end}
@@ -38,6 +39,8 @@ local events=inst("Folder");events.Name="GeneralEvents";local rob=inst("RemoteEv
 local register=inst("Model",workspace);register.Name="CashRegister";local open=inst("Part",register);open.Name="Open";open.Position=Vector3.new(5,0,0);open.CFrame={Position=open.Position};local union=inst("Part",register);union.Name="Union";local active=inst("BoolValue",register);active.Name="Active";active.Value=true
 local safe=inst("Model",workspace);safe.Name="Safe";local amount=inst("NumberValue",safe);amount.Name="Amount";amount.Value=20;local safePart=inst("Part",safe);safePart.Name="Safe";safePart.Position=Vector3.new(6,0,0);safePart.CFrame={Position=safePart.Position};local openSafe=inst("BoolValue",safe);openSafe.Name="Open";openSafe.Value=false;local openRemote=inst("RemoteEvent",safe);openRemote.Name="OpenSafe";openRemote.calls={};function openRemote:FireServer(...)table.insert(self.calls,{...})end
 local ground=inst("Part",workspace);ground.CanCollide=true;ground.Anchored=true
+local campFar=inst("Part",workspace);campFar.Name="OutlawCamp2";campFar.Position=Vector3.new(100,0,0);campFar.CFrame={Position=campFar.Position};campFar.CanCollide=true;campFar.Anchored=true
+local camp=inst("Part",workspace);camp.Name="OutlawCampCashIn";camp.Position=Vector3.new(7,0,0);camp.CFrame={Position=camp.Position};camp.CanCollide=true;camp.Anchored=true
 local floorAvailable,blocked,slope,water,edge=false,false,1,false,false
 function workspace:Raycast(origin,direction,params)
     assert(params.RespectCanCollide and params.FilterDescendantsInstances[1]==char,"ground ray excludes character")
@@ -60,6 +63,7 @@ run.Heartbeat:Fire(.4);assert(#rob.calls==1 and rob.calls[1][1]=="Register" and 
 run.Heartbeat:Fire(.4);assert(#rob.calls==1,"observation does not repeat remote calls")
 bag.Value=3;run.Heartbeat:Fire(.2);assert(labelText("Bag: 3/10"),"positive bag delta observed")
 fire("Stop");local calls=#rob.calls;run.Heartbeat:Fire(2);assert(#rob.calls==calls,"stop cancels late calls")
+active.Value=false;fire("Mode: Registers + safes");fire("Start");run.Heartbeat:Fire(.4);assert(#rob.calls==calls,"inactive registers are ignored");fire("Stop");active.Value=true;fire("Mode: Registers");fire("Mode: Safes");
 register:Destroy();workspace.DescendantRemoving:Fire(register);bag.Value=0;fire("Start");run.Heartbeat:Fire(.2);run.Heartbeat:Fire(.4);assert(#openRemote.calls==1 and openRemote.calls[1][1]=="Completed","closed safe opens once");run.Heartbeat:Fire(.4);assert(#rob.calls==1,"safe robbery waits for replicated open state");openSafe.Value=true;run.Heartbeat:Fire(.4);assert(#rob.calls==2 and rob.calls[2][1]=="Safe","safe payload")
 bag.Value=5;run.Heartbeat:Fire(.2);fire("Stop");content:Destroy();cleanup();cleanup();assert(not run.Heartbeat.listeners[1].Connected,"cleanup disconnects heartbeat")
 -- Mode and cash-in persist, but a fresh module must remain stopped.
@@ -68,34 +72,68 @@ calls=#rob.calls;run.Heartbeat:Fire(2);assert(#rob.calls==calls,"reload never au
 fire("Mode: Registers + safes");fire("Mode: Registers")
 content:Destroy();cleanup();content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
 fire("Mode: Safes");fire("Mode: Registers + safes");fire("Mode: Registers")
--- Full bags stop without teleporting to an unverified drop-off.
+-- Full bags select the nearest loaded camp, wait for empty bag, then resume.
 bag.Value=10;fire("Start");run.Heartbeat:Fire(.2)
-assert(root.CFrame==originalFrame,"full bag cannot teleport")
-assert(labelText("Bag full:"),"full bag stops for normal cash-in")
+assert(root.CFrame==originalFrame,"nearby camp needs no teleport")
+assert(labelText("Returning to Workspace.OutlawCampCashIn"),"closest recognized camp selected")
+assert(labelText("Cash-in") or labelText("Deposit") or labelText("Waiting") or labelText("Returning"),"full bag waits at camp")
 assert(#rob.calls==calls,"full bag never triggers robbery requests")
+bag.Value=5;run.Heartbeat:Fire(.4);assert(#rob.calls==calls,"partial bag does not resume farming")
 bag.Value=0
+for _=1,5 do run.Heartbeat:Fire(.2) end
+assert(#rob.calls==calls+1,"empty bag resumes farming after deposit")
+fire("Stop");calls=#rob.calls;bag.Value=0
+content:Destroy();cleanup();content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
+bag.Value=10;root.CFrame=originalFrame;local depositCalls=#rob.calls;fire("Start");run.Heartbeat:Fire(.2);content:Destroy();cleanup();bag.Value=0;run.Heartbeat:Fire(2)
+assert(#rob.calls==depositCalls and root.CFrame==originalFrame,"cleanup cancels an active cash-in")
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content);bag.Value=0
+-- A reached camp that does not empty the bag times out and selects the next one.
+local previousFarPosition=campFar.Position
+campFar.Position=Vector3.new(9,0,0);root.CFrame=originalFrame;bag.Value=10
+fire("Start");run.Heartbeat:Fire(.2);run.Heartbeat:Fire(.2)
+assert(labelText("Waiting for bag to empty at Workspace.OutlawCampCashIn"),"first camp reached")
+run.Heartbeat:Fire(10.1);run.Heartbeat:Fire(.2)
+assert(labelText("Returning to Workspace.OutlawCamp2"),"cash-in timeout selects next nearest camp")
+run.Heartbeat:Fire(.2);bag.Value=0;run.Heartbeat:Fire(.3)
+assert(labelText("Bag emptied; continuing route"),"alternate camp empty bag resumes route")
+assert(#rob.calls==depositCalls,"camp timeout never issues robbery requests")
+fire("Stop");campFar.Position=previousFarPosition;content:Destroy();cleanup()
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
+-- Failed first camp times out without issuing a robbery request.
+local campPosition,farCampPosition=camp.Position,campFar.Position
+camp.Position=Vector3.new(20,0,0);campFar.Position=Vector3.new(25,0,0);floorAvailable=false;bag.Value=10
+root.CFrame=originalFrame;fire("Start");for _=1,24 do run.Heartbeat:Fire(.5) end
+assert(#rob.calls==depositCalls and labelText("Cash-in unavailable"),"failed camps time out without robbery")
+floorAvailable=true;camp.Position=campPosition;campFar.Position=farCampPosition;bag.Value=0;content:Destroy();cleanup()
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
 -- Far targets with no grounded landing never move or make requests.
 local savedPosition=safePart.Position;safePart.Position=Vector3.new(100,0,0)
-fire("Start");run.Heartbeat:Fire(2);run.Heartbeat:Fire(1)
+floorAvailable=false;fire("Start");run.Heartbeat:Fire(2);run.Heartbeat:Fire(1)
 assert(root.CFrame==originalFrame and #rob.calls==calls,"distant targets cannot teleport or rob")
-fire("Stop");safePart.Position=savedPosition
+fire("Stop");floorAvailable=true;safePart.Position=savedPosition
 -- Taking damage cancels a pending action.
 fire("Start");run.Heartbeat:Fire(.2);hum.Health=90;run.Heartbeat:Fire(.4)
 assert(labelText("Stopped: damage detected"),"damage stops pending action")
 assert(#rob.calls==calls,"damage cancels pending request")
 hum.Health=100
--- Exception and rejection paths must both have finite attempt budgets.
+-- Collection errors and missing bag gains back off per target without stopping the run.
 openSafe.Value=true
 local normalFire=rob.FireServer
 function rob:FireServer(...) table.insert(self.calls,{...});error("simulated rejection") end
 fire("Start")
-for _=1,150 do run.Heartbeat:Fire(.5) end
-assert(#rob.calls==calls+3,"remote errors stop after three attempts")
-assert(labelText("Repeated collection failures"),"remote errors produce stopped state")
-rob.FireServer=normalFire;calls=#rob.calls;fire("Start")
-for _=1,150 do run.Heartbeat:Fire(.5) end
-assert(#rob.calls==calls+3,"unconfirmed collection stops after three attempts")
-assert(labelText("No collection confirmed"),"no payout produces stopped state")
+run.Heartbeat:Fire(.2);local errorCalls=#rob.calls
+for _=1,28 do run.Heartbeat:Fire(.5) end
+assert(#rob.calls==errorCalls,"retry backoff delays second collection attempt")
+run.Heartbeat:Fire(1);assert(#rob.calls==errorCalls+1,"retry occurs after 15 second delay")
+for _=1,58 do run.Heartbeat:Fire(.5) end
+assert(#rob.calls==errorCalls+1,"second retry uses 30 second delay")
+for _=1,4 do run.Heartbeat:Fire(.5) end
+assert(#rob.calls==errorCalls+2,"second retry occurs after 30 second delay")
+assert(not labelText("Repeated collection failures"),"collection errors do not stop the run")
+rob.FireServer=normalFire;fire("Stop");calls=#rob.calls;fire("Start")
+for _=1,20 do run.Heartbeat:Fire(.5) end
+assert(not labelText("No collection confirmed"),"no payout does not stop the run")
+fire("Stop")
 content:Destroy();cleanup();content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
 bag.Value=0;fire("Start");run.Heartbeat:Fire(.2)
 calls=#rob.calls;content:Destroy();cleanup();run.Heartbeat:Fire(1)
@@ -155,7 +193,7 @@ content:Destroy();cleanup();hum.FloorMaterial=Enum.Material.Grass
 -- Bag changes and streamed/replaced parts cancel collection safely.
 content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
 root.CFrame=originalFrame;fire("Start");run.Heartbeat:Fire(.2);bag.Value=10;run.Heartbeat:Fire(.9)
-assert(labelText("Bag full:") and #rob.calls==calls,"full bag during landing prevents robbery")
+assert((labelText("Returning") or labelText("Waiting")) and #rob.calls==calls,"full bag during landing starts cash-in")
 content:Destroy();cleanup();bag.Value=0
 content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
 root.CFrame=originalFrame;fire("Start");run.Heartbeat:Fire(.2);safePart.Parent=nil;run.Heartbeat:Fire(.9)

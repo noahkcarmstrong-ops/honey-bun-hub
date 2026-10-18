@@ -37,3 +37,9 @@ The evidence supports a small diagnostic and route-planning tab first:
 4. Add measured earnings per minute only after a connected live client records before/after money and the observed cooldown.
 
 Until that live measurement exists, the project should label the `$100k/min` claim as unverified and avoid presenting any fixed payout or cooldown as fact.
+
+## Cash-in implementation follow-up
+
+The user confirmed ROUTE 3 collected money into the bag in their live session. Their report included active/inactive registers, a 70-capacity bag, three confirmed bag increases, and no cash/deposit/bag proximity prompts. It did not identify any camp object or current cash-in coordinate.
+
+ROUTE 4 tries explicit outlaw-camp names/attributes among loaded objects as candidates, ordered by distance. Those names are heuristics awaiting live verification. The historical coordinate above is a fallback candidate, with streaming requests and the same grounded landing checks used by robbery routing. Neither a model name nor reaching the coordinate counts as success: the bag must reach zero before the farm resumes. Partial deposits keep the route waiting; failed candidates time out and are not retried during the same full-bag return. This confirms an empty bag, not an independently measured wallet payout. No current source establishes all camp locations or whole-map target discovery.

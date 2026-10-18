@@ -1,4 +1,4 @@
--- HoneyBunFarmRouteV3
+-- HoneyBunFarmRouteV4
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,6 +16,9 @@ local function mount(contentFrame)
     local pending, targetBackoff, scanned, eligible = nil, {}, 0, 0
     local attempts, successes, collectedTotal, failedAttempts, lastFailure = 0, 0, 0, 0, "none"
     local nextAttemptAt = 0
+    local deposit, depositTried = nil, {}
+    local cashIns, campName = 0, "none"
+    local targetFailures = setmetatable({}, {__mode="k"})
     local lastHealth
     local teleports, skippedLandings, lastMovement = 0, 0, "none"
     local connections, owned = {}, {}
@@ -32,7 +35,7 @@ local function mount(contentFrame)
     end
     local function cleanup()
         if not alive then return end
-        alive, running, pending = false, false, nil
+        alive, running, pending, deposit = false, false, nil, nil
         saveMode()
         disconnectAll()
         for _, object in ipairs(owned) do object:Destroy() end
@@ -84,7 +87,7 @@ local function mount(contentFrame)
     bagLabel = label("Bag: unavailable", 102)
     collectedLabel = label("Collected into bag: 0", 103)
     local modeButton = row("Mode: Registers + safes", 104)
-    label("Teleport route: checked landings, damage stop, server cooldowns apply.", 105)
+    label("Auto camp return when full. Failed targets are skipped; server cooldowns apply.", 105)
     local startButton = row("Start", 106)
     local reportButton = row("Copy farm report", 107)
 
@@ -120,7 +123,7 @@ local function mount(contentFrame)
     local function validRegister(item)
         return item:IsA("Model") and item:FindFirstChild("Open") and item.Open:IsA("BasePart")
             and item:FindFirstChild("Union") and item.Union:IsA("BasePart")
-            and item:FindFirstChild("Active") and item.Active:IsA("BoolValue")
+            and item:FindFirstChild("Active") and item.Active:IsA("BoolValue") and item.Active.Value == true
     end
     local function validSafe(item)
         local amount = numberValue(item, "Amount")
@@ -137,7 +140,7 @@ local function mount(contentFrame)
         local targets = {}
         for _, item in ipairs(workspace:GetDescendants()) do
             local kind = item.Name == "CashRegister" and "register" or item.Name == "Safe" and "safe"
-            if kind then
+            if kind and item:IsA("Model") then
                 scanned = scanned + 1
                 if (mode == "both" or mode == (kind == "register" and "registers" or "safes")) and isTarget(item, kind) then
                     eligible = eligible + 1
@@ -166,7 +169,7 @@ local function mount(contentFrame)
         return bag, capacity
     end
     local function stop(reason)
-        running, pending, activeRoot = false, nil, nil
+        running, pending, activeRoot, deposit = false, nil, nil, nil
         startButton.Text = "Start"
         setStatus(reason or "Stopped")
     end
@@ -191,7 +194,7 @@ local function mount(contentFrame)
             local hit = workspace:Raycast(Vector3.new(pos.X+offset[1],pos.Y+8,pos.Z+offset[2]), Vector3.new(0,-20,0),ray)
             if hit and hit.Normal.Y >= 0.9 and hit.Material ~= Enum.Material.Water
                 and math.abs(hit.Position.Y-pos.Y) <= 6
-                and not hit.Instance:IsDescendantOf(target.model)
+                and (target.allowOwnGround or not target.model or not hit.Instance:IsDescendantOf(target.model))
                 and (hit.Instance:IsA("Terrain") or (hit.Instance.CanCollide and hit.Instance.Anchored)) then
                 local floor = hit.Position
                 local supported = true
@@ -199,7 +202,7 @@ local function mount(contentFrame)
                     local support = workspace:Raycast(Vector3.new(floor.X+corner[1],floor.Y+2,floor.Z+corner[2]),Vector3.new(0,-4,0),ray)
                     if not support or support.Normal.Y < 0.9 or support.Material == Enum.Material.Water
                         or math.abs(support.Position.Y-floor.Y) > 0.75
-                        or support.Instance:IsDescendantOf(target.model)
+                        or (not target.allowOwnGround and target.model and support.Instance:IsDescendantOf(target.model))
                         or not (support.Instance:IsA("Terrain") or (support.Instance.CanCollide and support.Instance.Anchored)) then
                         supported = false; break
                     end
@@ -211,31 +214,111 @@ local function mount(contentFrame)
             end
         end
     end
+    local function moveToTarget(target, root)
+        if (target.part.Position-root.Position).Magnitude <= 10 then return true, false end
+        local ok, landing = pcall(landingFor,target,root)
+        if not ok or not landing then
+            skippedLandings = skippedLandings + 1
+            return false, ok and "no clear grounded landing" or "landing checks unavailable"
+        end
+        local okMove = pcall(function()
+            root.AssemblyLinearVelocity = Vector3.new(0,0,0)
+            root.AssemblyAngularVelocity = Vector3.new(0,0,0)
+            root.CFrame = landing
+        end)
+        if not okMove then return false, "teleport failed" end
+        teleports = teleports + 1
+        lastMovement = target.name or target.model:GetFullName()
+        return true, true
+    end
+    local function campCandidates()
+        local result = {}
+        for _, item in ipairs(workspace:GetDescendants()) do
+            local name = item.Name:lower():gsub("[^%w]", "")
+            local team = tostring(item:GetAttribute("Team") or item:GetAttribute("Faction") or ""):lower()
+            if (item:IsA("Model") or item:IsA("BasePart")) and
+                (name:match("^outlawcamp%d*$") or name == "outlawcampcashin" or name == "outlawcashin"
+                    or (name == "camp" and team:find("outlaw",1,true))) then
+                local ok, pos = pcall(function()
+                    if item:IsA("BasePart") then return item.Position end
+                    if item.PrimaryPart then return item.PrimaryPart.Position end
+                    return item:GetPivot().Position
+                end)
+                if ok and pos then
+                    table.insert(result,{model=item,part={Position=pos},name=item:GetFullName(),key=item,allowOwnGround=true})
+                end
+            end
+        end
+        return result
+    end
+    local function beginDeposit(root)
+        local candidate, distance
+        for _, camp in ipairs(campCandidates()) do
+            local d = (camp.part.Position-root.Position).Magnitude
+            if not depositTried[camp.key] and (not distance or d < distance) then candidate,distance=camp,d end
+        end
+        -- Historical camp location, only attempted when no named loaded camp remains.
+        -- Its current cash-in behavior is confirmed only by the bag actually reaching zero.
+        if not candidate and not depositTried.historical then
+            candidate={part={Position=Vector3.new(1636.62537,104.349976,-1736.184)},name="Historical camp (unverified)",key="historical",allowOwnGround=true}
+        end
+        if not candidate then stop("Cash-in unavailable: no camp emptied the bag; copy farm report"); return end
+        depositTried[candidate.key]=true
+        campName=candidate.name
+        local state={target=candidate,phase="stream",ready=true,due=elapsed+6}
+        deposit=state
+        setStatus("Returning to " .. campName)
+        if workspace.StreamingEnabled and player.RequestStreamAroundAsync and task and task.spawn then
+            state.ready=false
+            task.spawn(function()
+                pcall(function() player:RequestStreamAroundAsync(candidate.part.Position,4) end)
+                if alive and running and deposit==state then state.ready=true end
+            end)
+        end
+    end
+    local function processDeposit(root, bag)
+        local state=deposit
+        if state.phase == "stream" then
+            if not state.ready and elapsed < state.due then return end
+            local ok, moved=moveToTarget(state.target,root)
+            if not ok then lastFailure="cash-in: " .. moved; deposit=nil; return end
+            state.phase,state.due,state.deadline="wait",elapsed+(moved and 0.8 or 0.2),elapsed+10
+            state.moved,state.landingDeadline=moved,elapsed+3
+            setStatus("Waiting for bag to empty at " .. campName)
+            return
+        end
+        if (root.Position-state.target.part.Position).Magnitude > 20 then
+            lastFailure="cash-in landing rejected";stop("Stopped: " .. lastFailure);return
+        end
+        local humanoid=player.Character:FindFirstChildWhichIsA("Humanoid")
+        local velocity=root.AssemblyLinearVelocity
+        if state.moved and elapsed >= state.landingDeadline
+            and (humanoid.FloorMaterial == Enum.Material.Air or not velocity or velocity.Magnitude > 12) then
+            lastFailure="cash-in landing did not settle";stop("Stopped: " .. lastFailure);return
+        end
+        if bag == 0 and elapsed >= state.due and humanoid.FloorMaterial ~= Enum.Material.Air
+            and (not velocity or velocity.Magnitude <= 12) then
+            cashIns=cashIns+1;deposit=nil;depositTried={};failedAttempts=0;nextAttemptAt=elapsed
+            setStatus("Bag emptied; continuing route")
+        elseif elapsed >= state.deadline then
+            lastFailure="camp did not empty bag";deposit=nil
+            setStatus("Cash-in not confirmed; trying another camp")
+        end
+    end
+    local function backoff(target,reason)
+        local count=(targetFailures[target.model] or 0)+1
+        targetFailures[target.model]=count
+        targetBackoff[target.model]=elapsed+math.min(120,15*2^math.min(count-1,3))
+        failedAttempts=failedAttempts+1;lastFailure=reason
+        setStatus("Skipping failed target; continuing route")
+    end
     local function attempt(target, bag)
         local root = characterRoot()
         local remote = validRemote()
         if not root or not remote then stop("Stopped: character or Rob remote unavailable"); return end
         nextAttemptAt = elapsed + 1
-        local moved = false
-        if (target.part.Position-root.Position).Magnitude > 10 then
-            local ok, landing = pcall(landingFor,target,root)
-            if not ok or not landing then
-                skippedLandings = skippedLandings + 1
-                lastFailure = ok and "no clear grounded landing" or "landing checks unavailable"
-                targetBackoff[target.model] = elapsed + 15
-                setStatus("Skipping target: " .. lastFailure)
-                return
-            end
-            local okMove = pcall(function()
-                root.AssemblyLinearVelocity = Vector3.new(0,0,0)
-                root.AssemblyAngularVelocity = Vector3.new(0,0,0)
-                root.CFrame = landing
-            end)
-            if not okMove then stop("Stopped: teleport failed"); return end
-            teleports = teleports + 1
-            lastMovement = target.model:GetFullName()
-            moved = true
-        end
+        local ok,moved=moveToTarget(target,root)
+        if not ok then backoff(target,moved);return end
         pending = {target=target, bag=bag, phase=moved and "landing" or "ready", due=elapsed+(moved and 0.8 or 0.2), landingDeadline=elapsed+3}
         attempts = attempts + 1
         setStatus(moved and "Checking landing" or "Collecting nearby target")
@@ -243,8 +326,7 @@ local function mount(contentFrame)
     local function doRemote()
         if not running or not pending then return end
         local function failTarget(reason)
-            lastFailure = reason; targetBackoff[pending.target.model] = elapsed + 15; failedAttempts = failedAttempts + 1; pending = nil
-            if failedAttempts >= 3 then stop("Repeated collection failures; scan needed") end
+            backoff(pending.target,reason);pending=nil
         end
         local target, remote = pending.target, validRemote()
         if not remote or not target.model.Parent or not isTarget(target.model, target.kind)
@@ -254,7 +336,7 @@ local function mount(contentFrame)
         end
         local bag, capacity = bagInfo()
         if not bag or not capacity or capacity <= 0 then stop("Stopped: bag data unavailable"); return end
-        if bag >= capacity then stop("Bag full: cash in normally; automatic drop-off unverified"); return end
+        if bag >= capacity then pending=nil;setStatus("Bag full; returning to camp");return end
         local root = characterRoot()
         if not root or (target.part.Position - root.Position).Magnitude > 12 then
             lastFailure = "landing rejected or target out of reach"
@@ -297,6 +379,21 @@ local function mount(contentFrame)
         scan()
         local paths = {}
         local prompts = {}
+        local campPaths = {}
+        for _, item in ipairs(workspace:GetDescendants()) do
+            local name=item.Name:lower()
+            if #campPaths < 20 and (name:find("camp",1,true) or name:find("cashin",1,true) or name:find("outlaw",1,true)) then
+                local ok,cf=pcall(function()
+                    return item:IsA("BasePart") and item.CFrame or item:IsA("Model") and item:GetPivot()
+                end)
+                local pos=ok and cf and cf.Position
+                local where=pos and string.format(" @ %.1f,%.1f,%.1f",pos.X,pos.Y,pos.Z) or ""
+                table.insert(campPaths,item:GetFullName() .. " [" .. item.ClassName .. "]" .. where)
+            end
+        end
+        local root=characterRoot()
+        local pos=root and root.Position
+        local position=pos and string.format("%.1f, %.1f, %.1f",pos.X,pos.Y,pos.Z) or "unavailable"
         for _, item in ipairs(workspace:GetDescendants()) do
             if item:IsA("ProximityPrompt") then
                 local text = tostring(item.ActionText or "") .. " " .. tostring(item.ObjectText or "")
@@ -308,7 +405,7 @@ local function mount(contentFrame)
         end
         for _, item in ipairs(workspace:GetDescendants()) do
             if #paths >= 8 then break end
-            if item.Name == "CashRegister" or item.Name == "Safe" then
+            if item:IsA("Model") and (item.Name == "CashRegister" or item.Name == "Safe") then
                 local function childInfo(name)
                     local child = item:FindFirstChild(name)
                     if not child then return "missing" end
@@ -320,7 +417,7 @@ local function mount(contentFrame)
                 table.insert(paths, tostring(name) .. " {Open=" .. childInfo("Open") .. ", Amount=" .. childInfo("Amount") .. ", Active=" .. childInfo("Active") .. "}")
             end
         end
-        return table.concat({"Honey Bun Hub farm report", "Mode: " .. modeText(), "Running: " .. tostring(running), "Bag: " .. tostring(bag or "unavailable") .. "/" .. tostring(capacity or "unavailable"), "Movement: checked teleport route V3", "Teleports: " .. teleports, "Skipped landings: " .. skippedLandings, "Last teleport: " .. lastMovement, "Health: " .. tostring(lastHealth or "unknown"), "Cash-in: automatic detection unverified", "Rob remote present: " .. tostring(validRemote() ~= nil), "Scanned: " .. scanned, "Eligible: " .. eligible, "Attempts: " .. attempts, "Confirmed bag increases: " .. successes, "Failed attempts: " .. failedAttempts, "Last failure: " .. lastFailure, "Possible drop-off prompts (unverified): " .. (#prompts > 0 and table.concat(prompts, ", ") or "none loaded"), "Targets: " .. (#paths > 0 and table.concat(paths, ", ") or "none")}, "\n")
+        return table.concat({"Honey Bun Hub farm report", "Mode: " .. modeText(), "Running: " .. tostring(running), "Bag: " .. tostring(bag or "unavailable") .. "/" .. tostring(capacity or "unavailable"), "Movement: checked teleport route V4", "Teleports: " .. teleports, "Skipped landings: " .. skippedLandings, "Last teleport: " .. lastMovement, "Health: " .. tostring(lastHealth or "unknown"), "Cash-in: nearest recognized loaded camp; historical fallback", "Position: " .. position, "Camp objects: " .. (#campPaths > 0 and table.concat(campPaths, ", ") or "none loaded"), "Camp: " .. campName, "Confirmed cash-ins: " .. cashIns, "Loaded camp candidates: " .. #campCandidates(), "Rob remote present: " .. tostring(validRemote() ~= nil), "Scanned: " .. scanned, "Eligible: " .. eligible, "Attempts: " .. attempts, "Confirmed bag increases: " .. successes, "Failed attempts: " .. failedAttempts, "Last failure: " .. lastFailure, "Possible drop-off prompts (unverified): " .. (#prompts > 0 and table.concat(prompts, ", ") or "none loaded"), "Targets: " .. (#paths > 0 and table.concat(paths, ", ") or "none")}, "\n")
     end
     modeButton.Activated:Connect(function()
         mode = mode == "both" and "registers" or mode == "registers" and "safes" or "both"
@@ -332,8 +429,8 @@ local function mount(contentFrame)
         local bag, capacity = bagInfo()
         if bag == nil or not capacity or capacity <= 0 then setStatus("Cannot start: bag data unavailable"); return end
         if not validRemote() then setStatus("Cannot start: Rob remote unavailable"); return end
-        local targets = scan()
-        if #targets == 0 then setStatus("Cannot start: no valid targets detected"); return end
+        scan()
+        depositTried={};deposit=nil
         running, stepClock, failedAttempts, nextAttemptAt, activeRoot = true, 0, 0, elapsed, characterRoot()
         lastHealth = player.Character:FindFirstChildWhichIsA("Humanoid").Health
         startButton.Text = "Stop"; setStatus("Running teleport route; cooldowns unchanged")
@@ -366,18 +463,24 @@ local function mount(contentFrame)
         if stepClock < 0.2 then return end
         stepClock = 0
         if not bag or not capacity or capacity <= 0 then stop("Stopped: bag data unavailable"); return end
+        if deposit then processDeposit(root,bag);return end
+        if bag == 0 and next(depositTried) then
+            cashIns=cashIns+1;depositTried={};failedAttempts=0;nextAttemptAt=elapsed
+            setStatus("Bag emptied; continuing route")
+        end
+        if pending and pending.phase ~= "observe" and bag >= capacity then pending=nil end
         if pending then
-            if pending.phase == "observe" and bag and pending.bag and bag > pending.bag then targetBackoff[pending.target.model] = elapsed + 30; local delta = bag - pending.bag; successes = successes + 1; collectedTotal = collectedTotal + delta; collectedLabel.Text = "Collected into bag: +" .. tostring(delta) .. " (total amount: " .. tostring(collectedTotal) .. ")"; pending = nil; failedAttempts = 0
+            if pending.phase == "observe" and bag and pending.bag and bag > pending.bag then targetFailures[pending.target.model]=nil; targetBackoff[pending.target.model] = elapsed + 30; local delta = bag - pending.bag; successes = successes + 1; collectedTotal = collectedTotal + delta; collectedLabel.Text = "Collected into bag: +" .. tostring(delta) .. " (total amount: " .. tostring(collectedTotal) .. ")"; pending = nil; failedAttempts = 0
             elseif pending.phase == "observe" and elapsed >= pending.observeUntil then
-                failedAttempts = failedAttempts + 1; lastFailure = "no bag increase after attempt"; targetBackoff[pending.target.model] = elapsed + 15; pending = nil
-                if failedAttempts >= 3 then stop("No collection confirmed; scan needed"); return end
+                backoff(pending.target,"no bag increase after attempt");pending=nil
             elseif pending.phase ~= "observe" and elapsed >= pending.due then doRemote() end
             return
         end
         if bag >= capacity then
-            stop("Bag full: cash in normally; automatic drop-off unverified")
+            beginDeposit(root)
             return
         end
+        if bag > 0 and next(depositTried) then beginDeposit(root);return end
         if elapsed >= nextAttemptAt then
             nextAttemptAt=elapsed+1
             local target = nearest(scan(), root)
