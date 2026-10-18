@@ -8,9 +8,12 @@ local function mount(contentFrame)
     local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
     local alive = true
     local animals, chests, advanced, rareOnly = false, false, false, false
-    local animalTypesExpanded = false
+    local animalTypesExpanded, rareTypesExpanded = false, false
     local animalTypes, speciesButtons, speciesButtonLabels = {}, {}, {}
+    local animalTypesDefault, rareTypesDefault = true, true
+    local rareSelections, rareButtons, rareButtonLabels = {}, {}, {}
     local speciesButtonCount = 0
+    local rareButtonCount = 0
     local distances = {500, 1000, 2500, math.huge}
     local distanceIndex = 4
     local queue, queued, tracked = {}, {}, {}
@@ -91,6 +94,17 @@ local function mount(contentFrame)
     local allAnimalsButton = row("All animal types", 107)
     local noAnimalsButton = row("No animal types", 108)
     local rareButton = row("Rare animals only: OFF", 109)
+    local rareTypesButton = row("Rare animal types", 110)
+    local allRareButton = row("All rare animal types", 111)
+    local noRareButton = row("No rare animal types", 112)
+    local rareVariantNames = {
+        {"dire wolf", "Dire Wolf"}, {"legendary bison", "Legendary Bison"},
+        {"legendary deer", "Legendary Deer"}, {"legendary black bear", "Legendary Black Bear"},
+        {"legendary grizzly bear", "Legendary Grizzly Bear"}, {"legendary wolf", "Legendary Wolf"},
+        {"legendary coyote", "Legendary Coyote"}, {"legendary dire wolf", "Legendary Dire Wolf"},
+        {"legendary bull moose", "Legendary Bull Moose"},
+    }
+    for _, variant in ipairs(rareVariantNames) do rareSelections[variant[1]] = true end
     rangeButton.Visible, foundLabel.Visible = false, false
 
     local function updateSpeciesButtons()
@@ -102,6 +116,13 @@ local function mount(contentFrame)
         allAnimalsButton.Visible = animals and animalTypesExpanded
         noAnimalsButton.Visible = animals and animalTypesExpanded
         rareButton.Visible = animals
+        rareTypesButton.Visible = animals
+        allRareButton.Visible = animals and rareTypesExpanded
+        noRareButton.Visible = animals and rareTypesExpanded
+        for key, button in pairs(rareButtons) do
+            button.Visible = animals and rareTypesExpanded
+            button.Text = (rareSelections[key] and "✓ " or "  ") .. rareButtonLabels[key]
+        end
     end
 
     local function refreshControls()
@@ -134,27 +155,71 @@ local function mount(contentFrame)
     end
     animalButton.Activated:Connect(function() animals = not animals; refreshControls() end)
     chestButton.Activated:Connect(function() chests = not chests; refreshControls() end)
-    rareButton.Activated:Connect(function() rareOnly = not rareOnly; refreshControls() end)
+    rareButton.Activated:Connect(function()
+        rareOnly = not rareOnly
+        if rareOnly then
+            rareTypesDefault = true
+            for key in pairs(rareSelections) do rareSelections[key] = true end
+        end
+        refreshControls()
+    end)
     moreButton.Activated:Connect(function() advanced = not advanced; refreshControls() end)
     animalTypesButton.Activated:Connect(function() animalTypesExpanded = not animalTypesExpanded; refreshControls() end)
+    rareTypesButton.Activated:Connect(function() rareTypesExpanded = not rareTypesExpanded; refreshControls() end)
     allAnimalsButton.Activated:Connect(function()
+        animalTypesDefault = true
+        rareTypesDefault = true
         for key in pairs(animalTypes) do animalTypes[key] = true end
+        for key in pairs(rareSelections) do rareSelections[key] = true end
         refreshControls()
     end)
     noAnimalsButton.Activated:Connect(function()
+        animalTypesDefault = false
+        rareTypesDefault = false
         for key in pairs(animalTypes) do animalTypes[key] = false end
+        for key in pairs(rareSelections) do rareSelections[key] = false end
         refreshControls()
     end)
+    allRareButton.Activated:Connect(function()
+        rareTypesDefault = true
+        for key in pairs(rareSelections) do rareSelections[key] = true end
+        refreshControls()
+    end)
+    noRareButton.Activated:Connect(function()
+        rareTypesDefault = false
+        for key in pairs(rareSelections) do rareSelections[key] = false end
+        refreshControls()
+    end)
+    local function addRareButton(key, display)
+        if rareButtons[key] then return end
+        rareButtonCount = rareButtonCount + 1
+        local button = row("  " .. display, 112 + rareButtonCount)
+        button.Visible = false
+        rareButtonLabels[key] = display
+        button.Activated:Connect(function()
+            rareSelections[key] = not rareSelections[key]
+            refreshControls()
+        end)
+        rareButtons[key] = button
+    end
+    for _, variant in ipairs(rareVariantNames) do addRareButton(variant[1], variant[2]) end
     rangeButton.Activated:Connect(function()
         distanceIndex = distanceIndex % #distances + 1
         refreshControls()
     end)
 
-    local species = {horse=true, bear=true, deer=true, bison=true, coyote=true, wolf=true, rabbit=true, boar=true, cow=true, ox=true, goat=true, sheep=true, pig=true, chicken=true, turkey=true, elk=true, moose=true, buffalo=true, fox=true, alligator=true, snake=true}
+    local species = {horse=true, bear=true, deer=true, bison=true, coyote=true, wolf=true, rabbit=true, boar=true, cow=true, ox=true, goat=true, sheep=true, pig=true, chicken=true, turkey=true, elk=true, moose=true, buffalo=true, fox=true, alligator=true, snake=true, crow=true}
     local function lower(value) return string.lower(tostring(value or "")) end
     local function speciesLabel(value)
-        local text = tostring(value or ""):gsub("(%l)(%u)", "%1 %2"):gsub("[_%-]+", " "):gsub("%s+", " ")
+        local text = tostring(value or ""):gsub("[%{%(%[].*$", ""):gsub("(%l)(%u)", "%1 %2"):gsub("[_%-]+", " "):gsub("%s+", " ")
+        text = text:gsub("%s+[Uu][Uu][Ii][Dd].*", "")
         return text:match("^%s*(.-)%s*$")
+    end
+    local function canonicalRareKey(value)
+        local text = lower(speciesLabel(value))
+        for _, variant in ipairs(rareVariantNames) do
+            if text == variant[1] then return variant[1] end
+        end
     end
     local function hasSpecies(value)
         local words = tostring(value or ""):gsub("(%l)(%u)", "%1 %2")
@@ -210,7 +275,7 @@ local function mount(contentFrame)
         if animal and animal ~= "" or animalName or hasSpecies(model.Name) or tagged(model, {"Animal"}) then
             local rare = rareAnimal(model, source)
             local display = speciesLabel(rare and source or animalName or source)
-            return "animal", display, lower(animalName or display), rare
+            return "animal", display, lower(animalName or display), rare, canonicalRareKey(display or source)
         end
         local name = lower(model.Name)
         local chestName = name:find("treasurechest", 1, true) or name == "treasure chest"
@@ -269,14 +334,9 @@ local function mount(contentFrame)
         local item = tracked[model]
         if item then if item.gui then item.gui:Destroy() end; tracked[model] = nil end
     end
-    local function trackedCount()
-        local count = 0
-        for _ in pairs(tracked) do count = count + 1 end
-        return count
-    end
     local function add(model)
-        if tracked[model] or not model.Parent or trackedCount() >= 300 then return end
-        local kind, label, speciesKeyValue, rare = classify(model)
+        if tracked[model] or not model.Parent then return end
+        local kind, label, speciesKeyValue, rare, rareKey = classify(model)
         if not kind then return end
         for _, child in ipairs(model:GetChildren()) do
             if child:IsA("Model") and classify(child) then return end
@@ -289,8 +349,8 @@ local function mount(contentFrame)
         local part = partFor(model)
         if not part then return end
         speciesKeyValue = kind == "animal" and speciesKeyValue or nil
-        if speciesKeyValue and animalTypes[speciesKeyValue] == nil then animalTypes[speciesKeyValue] = true end
-        tracked[model] = {kind=kind, label=label, speciesKey=speciesKeyValue, rare=rare, part=part, gui=nil, gold=nil, goldChecked=false, nextGoldAt=0, chestState="unknown"}
+        if speciesKeyValue and animalTypes[speciesKeyValue] == nil then animalTypes[speciesKeyValue] = animalTypesDefault end
+        tracked[model] = {kind=kind, label=label, speciesKey=speciesKeyValue, rare=rare, rareKey=rareKey, part=part, gui=nil, gold=nil, goldChecked=false, nextGoldAt=0, chestState="unknown"}
         if speciesKeyValue and not speciesButtons[speciesKeyValue] then
             speciesButtonCount = speciesButtonCount + 1
             local button = row("  " .. label, 108 + speciesButtonCount)
@@ -349,7 +409,8 @@ local function mount(contentFrame)
                     item.chestState = "unlooted"
                 end
             end
-            local enabled = (item.kind == "animal" and animals and (not rareOnly or item.rare) and item.speciesKey and animalTypes[item.speciesKey] ~= false) or (item.kind == "chest" and chests and item.chestState == "unlooted")
+            local animalEnabled = item.rare and (not item.rareKey or rareSelections[item.rareKey] ~= false) or (not item.rare and item.speciesKey and animalTypes[item.speciesKey] ~= false)
+            local enabled = (item.kind == "animal" and animals and ((rareOnly and item.rare and animalEnabled) or (not rareOnly and animalEnabled))) or (item.kind == "chest" and chests and item.chestState == "unlooted")
             if not model.Parent or not item.part.Parent then remove(model)
             elseif not enabled then if item.gui then item.gui.Enabled = false end
             else
