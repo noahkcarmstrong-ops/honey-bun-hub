@@ -12,14 +12,14 @@ Use **Refresh** in the menu for new versions. Refresh resets switches to their d
 
 ## Westbound
 
-Westbound is detected automatically by universe ID. Both ESP master switches start **OFF**. Scroll the menu to find all controls.
+Westbound is detected automatically by universe ID. Open the top **ESP** tab. Player, animal, and treasure chest switches start **OFF**. Extra controls are tucked under **More player options** and **More world options**.
 
-- **Player ESP:** Cowboys blue, Outlaws red, other teams gray; separate team filters and live counts. Name, distance and health labels; tracers; 2D boxes; chams; visual root hitbox outlines; visible-only filter; distance limits.
-- **World ESP:** animal type and distance; treasure chests with replicated gold amount when available. Animals and treasure chests can be switched separately, with an independent distance limit.
+- **Player ESP:** Cowboys blue, Outlaws red, other teams gray; a team filter and compact style presets. Name, distance and health labels; tracers; 2D boxes; chams; visual root hitbox outlines; visible-only filter; distance limits.
+- **World controls:** animal type and distance; treasure chests with replicated gold amount when available. Animals and treasure chests can be switched separately, with an independent distance limit.
 
 The hitbox option is a visual outline only and does not alter character hitboxes. Team classification uses actual team names containing Cowboy or Outlaw; other roles stay under Other teams.
 
-Animal and chest discovery uses model names, tags, and attributes. Exact live Westbound object names have not been inspected. Models with unavailable or non-replicated gold display **Gold unknown**; amounts are never guessed. Detection is limited to 300 tracked world targets and objects streamed to the client. Gold labels refresh about once per second.
+Animal and chest discovery uses model names, tags, and attributes. Exact live Westbound object names have not been inspected. Only chests with a readable unlooted state or positive gold are shown. Looted or empty chests are hidden. Unavailable gold is omitted from the label; amounts are never guessed. Detection is limited to 300 tracked world targets and objects streamed to the client. Loot flags refresh about every 0.1 seconds; gold amounts refresh about once per second. Player markers update every frame.
 
 ## Other games and future additions
 
