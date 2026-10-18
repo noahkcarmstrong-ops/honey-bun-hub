@@ -192,7 +192,12 @@ refresh.Activated:Connect(function()
     if farmCleanup then farmCleanup(); farmCleanup=nil end
     refresh.Text = "Refreshing..."
     local ok, message = pcall(function()
-        local url = base .. "loader.lua?refresh=" .. tostring(DateTime.now().UnixTimestampMillis)
+        local stamp = tostring(DateTime.now().UnixTimestampMillis)
+        local revisionUrl = "https://api.github.com/repos/noahkcarmstrong-ops/honey-bun-hub/commits/main?refresh=" .. stamp
+        local revision = game:GetService("HttpService"):JSONDecode(game:HttpGet(revisionUrl, false))
+        local sha = revision and revision.sha
+        assert(type(sha) == "string" and #sha == 40 and sha:match("^%x+$"), "GitHub did not return a valid update revision")
+        local url = "https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-hub/" .. sha .. "/loader.lua"
         local source = game:HttpGet(url, false)
         local chunk, compileError = loadstring(source)
         assert(chunk, compileError)

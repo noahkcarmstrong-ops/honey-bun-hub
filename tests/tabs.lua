@@ -12,7 +12,7 @@ local function signal()
 end
 local input={InputBegan=signal(),GetFocusedTextBox=function()return nil end}
 local originalService=game.GetService
-function game:GetService(name) if name=='UserInputService' then return input end;return originalService(self,name) end
+function game:GetService(name) if name=='UserInputService' then return input end; if name=='HttpService' then return {JSONDecode=function(_,value) assert(value=='latest-revision');return {sha=string.rep('a',40)} end} end;return originalService(self,name) end
 local new=Instance.new
 Instance.new=function(class,parent)
     local object=new(class,parent)
@@ -33,7 +33,15 @@ loadstring=function(source)
     return load(source)
 end
 function game:HttpGet(url)
-    if url:find('/loader.lua',1,true) then return '__test_loader__' end
+    if url:find('api.github.com/repos/',1,true) then
+        tabTest.revisionChecked=true
+        return 'latest-revision'
+    end
+    if url:find('/loader.lua',1,true) then
+        assert(tabTest.revisionChecked,'Refresh checks GitHub revision first')
+        assert(url:find('/'..string.rep('a',40)..'/loader.lua',1,true),'Refresh fetches exact latest commit')
+        return '__test_loader__'
+    end
     if url:find('/games/farm.lua',1,true) then
         if tabTest.failFarm then error('Simulated farm load failure') end
         if tabTest.staleFarm then return 'return function() error("stale farm executed") end' end
