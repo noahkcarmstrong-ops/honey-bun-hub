@@ -83,15 +83,6 @@ line.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 line.BorderSizePixel = 0
 text(panel, "OVERVIEW", UDim2.fromOffset(28, 120), UDim2.new(1, -56, 0, 20), 11, 120)
 
-local card = Instance.new("Frame", panel)
-card.Position = UDim2.fromOffset(28, 158)
-card.Size = UDim2.new(1, -56, 0, 94)
-card.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-card.BorderSizePixel = 0
-Instance.new("UICorner", card).CornerRadius = UDim.new(0, 7)
-text(card, "Ready", UDim2.fromOffset(18, 17), UDim2.new(1, -36, 0, 24), 16, 235)
-local description = text(card, current.description, UDim2.fromOffset(18, 45), UDim2.new(1, -36, 0, 38), 12, 135)
-description.TextWrapped = true
 
 local footerLine = line:Clone()
 footerLine.Position = UDim2.new(0, 28, 1, -64)
