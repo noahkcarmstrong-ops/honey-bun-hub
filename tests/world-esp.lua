@@ -32,6 +32,12 @@ function methods:FindFirstAncestorOfClass(class)
     local p=self.Parent; while p do if p:IsA(class) then return p end; p=p.Parent end
 end
 function methods:GetAttribute(name) return self.attributes[name] end
+function methods:GetAttributes() return self.attributes end
+function methods:GetFullName()
+    local names, current = {}, self
+    while current do table.insert(names, 1, current.Name); current = current.Parent end
+    return table.concat(names, ".")
+end
 function methods:Destroy()
     if self.destroyed then return end
     self.destroyed=true; self.Destroying:Fire(); for _, c in ipairs(self:GetChildren()) do c:Destroy() end; self.Parent=nil
@@ -72,7 +78,11 @@ end
 local normal=model("Horse",20,{AnimalType="horse"})
 local rare=model("Legendary Wolf",30,{AnimalType="wolf",Rare=true})
 local chest=model("TreasureChest",40,{Unlooted=true,Gold=100})
+local unknownChest=model("UnknownChest",45,{})
+local lootedChest=model("LootedChest",50,{Looted=true,Gold=500})
 local content=instance("ScrollingFrame")
+local clipboard
+setclipboard=function(value) clipboard=value end
 local module=dofile("games/world.lua")
 local cleanup=module(content)
 local function fire(text)
@@ -90,6 +100,18 @@ local function findHighlights()
 end
 run.Heartbeat:Fire(.11)
 assert(findHighlights()==0,"chams default off")
+fire("Treasure chests: OFF")
+run.Heartbeat:Fire(.11)
+local function chestMarker(text)
+    for _,o in ipairs(objects) do
+        if o.ClassName=="BillboardGui" and o.Enabled and o.Adornee==chest.PrimaryPart and o:FindFirstChildOfClass("TextLabel") then
+            if not text or o:FindFirstChildOfClass("TextLabel").Text:find(text,1,true) then return o end
+        end
+    end
+end
+assert(chestMarker("Gold: 100"),"confirmed unlooted chest is visible")
+assert(not (function() for _,o in ipairs(objects) do if o.ClassName=="BillboardGui" and o.Enabled and o.Adornee==unknownChest.PrimaryPart then return true end end end)(),"unknown chest is hidden")
+assert(not (function() for _,o in ipairs(objects) do if o.ClassName=="BillboardGui" and o.Enabled and o.Adornee==lootedChest.PrimaryPart then return true end end end)(),"looted chest is hidden")
 fire("Animal ESP: OFF")
 fire("Animal chams: OFF")
 assert(findHighlights()==0,"disabled animals have no chams")
@@ -116,6 +138,11 @@ fire("Rare animals only: OFF"); run.Heartbeat:Fire(.11)
 assert(findHighlights()==1,"rare filter hides normal chams")
 fire("Animal chams: ON"); run.Heartbeat:Fire(.11); assert(findHighlights()==0,"toggle hides chams")
 fire("Animal chams: OFF"); fire("Rare animals only: ON"); fire("More world options"); fire("Distance: Unlimited"); run.Heartbeat:Fire(.11)
+fire("Copy visibility report")
+assert(clipboard and clipboard:find("Chest ESP: ON",1,true),"report includes chest toggle")
+assert(clipboard:find("Chest details",1,true),"report includes chest details")
+assert(clipboard:find("state=unlooted",1,true),"report includes chest state")
+assert(clipboard:find('Unlooted="true"',1,true),"report includes chest attribute")
 normal.PrimaryPart.Position=Vector3.new(9999,0,0); rare.PrimaryPart.Position=Vector3.new(9999,0,0); run.Heartbeat:Fire(.11)
 assert(findHighlights()==0,"distance hides chams")
 rare.PrimaryPart.Position=Vector3.new(30,0,0);run.Heartbeat:Fire(.11)

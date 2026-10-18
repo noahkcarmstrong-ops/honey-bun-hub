@@ -244,8 +244,9 @@ local function mount(contentFrame)
             end
         end
         local configured = distances[distanceIndex] == math.huge and "Unlimited" or tostring(distances[distanceIndex])
-        return table.concat({
+        local lines = {
             "Honey Bun Hub visibility report",
+            "Chest ESP: " .. (chests and "ON" or "OFF"),
             "StreamingEnabled: " .. streaming,
             "Configured distance: " .. configured,
             "Animals discovered: " .. animalsFound,
@@ -257,7 +258,52 @@ local function mount(contentFrame)
             "Loaded player character roots: " .. playersLoaded,
             "Farthest loaded player root: " .. math.floor(playerFarthest) .. " studs",
             "Queue remaining: " .. queuedCount,
-        }, "\n")
+        }
+        -- Inspect nearby chest metadata only when the user requests a report.
+        local chestItems = {}
+        for model, item in pairs(tracked) do
+            if item.kind == "chest" then
+                table.insert(chestItems, {model=model, item=item, distance=cameraPosition and (item.part.Position-cameraPosition).Magnitude or math.huge})
+            end
+        end
+        table.sort(chestItems, function(a,b) return a.distance < b.distance end)
+        table.insert(lines, "Chest details (nearest first):")
+        local function metadata(object)
+            local fields = {}
+            local ok, attributes = pcall(function() return object:GetAttributes() end)
+            if ok then
+                for name, value in pairs(attributes) do
+                    if type(value)=="boolean" or type(value)=="number" or type(value)=="string" then
+                        table.insert(fields, tostring(name).."="..string.format("%q",tostring(value)):sub(1,160))
+                    end
+                end
+            end
+            table.sort(fields)
+            if object:IsA("BoolValue") or object:IsA("NumberValue") or object:IsA("IntValue") or object:IsA("StringValue") then
+                table.insert(fields, "Value="..string.format("%q",tostring(object.Value)):sub(1,160))
+            elseif object:IsA("ProximityPrompt") then
+                table.insert(fields, "Enabled="..tostring(object.Enabled))
+                table.insert(fields, "ActionText="..string.format("%q",object.ActionText))
+            end
+            return table.concat(fields, ", ")
+        end
+        for index=1,math.min(#chestItems,8) do
+            local entry=chestItems[index]
+            local item, model=entry.item,entry.model
+            local ok, path=pcall(function() return model:GetFullName() end)
+            table.insert(lines, string.format("Chest %d: %s | %s studs | state=%s | gold=%s | marker=%s",index,
+                ok and path or model.Name, entry.distance==math.huge and "unknown" or tostring(math.floor(entry.distance)),
+                item.chestState,tostring(item.gold),tostring(item.gui and item.gui.Enabled or false)))
+            table.insert(lines, "  Model attributes: "..metadata(model))
+            local descendants=model:GetDescendants()
+            for childIndex=1,math.min(#descendants,80) do
+                local child=descendants[childIndex]
+                local details=metadata(child)
+                table.insert(lines, "  "..child.ClassName.." "..child.Name..(details~="" and (": "..details) or ""))
+            end
+            if #descendants>80 then table.insert(lines,"  Additional descendants omitted: "..(#descendants-80)) end
+        end
+        return table.concat(lines, "\n")
     end
     reportButton.Activated:Connect(function()
         local report = visibilityReport()
