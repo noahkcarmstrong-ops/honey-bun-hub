@@ -38,10 +38,11 @@ return {
         local localPlayer, playerGui = Players.LocalPlayer, Players.LocalPlayer:WaitForChild("PlayerGui")
         local old = playerGui:FindFirstChild("HoneyBunWestboundESP")
         if old then old:Destroy() end
-        local s = {enabled=false,cowboys=true,outlaws=true,others=true,labels=true,names=true,distance=true,health=true,tracers=false,boxes=false,chams=false,hitbox=false,visibleOnly=false,maxDistance=1000}
+        local s = {enabled=false,cowboys=true,outlaws=true,others=true,labels=true,names=true,distance=true,health=true,tracers=false,boxes=false,chams=false,hitbox=false,visibleOnly=false,maxDistance=1000,teamMode="All",style="Labels"}
         local choices, choiceIndex = {500,1000,2500,math.huge}, 2
         local colors = {Cowboys=Color3.fromRGB(75,145,235),Outlaws=Color3.fromRGB(220,75,75),Other=Color3.fromRGB(165,165,165)}
-        local connections, records, ownedRows, dead = {}, {}, {}, false
+        local connections, records, ownedRows, advancedRows, advancedControls, dead = {}, {}, {}, {}, {}, false
+        local nextOrder = 1
         local worldCleanup
         local overlay = Instance.new("ScreenGui")
         overlay.Name,overlay.IgnoreGuiInset,overlay.ResetOnSpawn,overlay.DisplayOrder = "HoneyBunWestboundESP",true,false,20
@@ -51,7 +52,8 @@ return {
         end
         local function row(labelText, initial, set, toggle)
             local frame = Instance.new("Frame")
-            frame.Size,frame.BackgroundTransparency,frame.Parent = UDim2.new(1,0,0,32),1,contentFrame
+            frame.Size,frame.LayoutOrder,frame.BackgroundTransparency,frame.Parent = UDim2.new(1,0,0,28),nextOrder,1,contentFrame
+            nextOrder = nextOrder + 1
             table.insert(ownedRows, frame)
             text(frame,labelText,UDim2.new(1,-124,1,0),Color3.fromRGB(190,190,190),11)
             local item = button(frame,"OFF")
@@ -68,32 +70,75 @@ return {
             end)
             return item
         end
+        local function cycleRow(labelText, values, current, set)
+            local frame = Instance.new("Frame")
+            frame.Size,frame.LayoutOrder,frame.BackgroundTransparency,frame.Parent = UDim2.new(1,0,0,28),nextOrder,1,contentFrame
+            nextOrder = nextOrder + 1
+            table.insert(ownedRows, frame)
+            text(frame,labelText,UDim2.new(1,-124,1,0),Color3.fromRGB(190,190,190),11)
+            local item = button(frame,current)
+            item.AnchorPoint,item.Position = Vector2.new(1,.5),UDim2.new(1,0,.5,0)
+            connect(item.Activated,function()
+                local index=1
+                for i,value in ipairs(values) do if value==item.Text then index=i; break end end
+                index=index%#values+1
+                item.Text=values[index]; set(values[index])
+            end)
+            return item
+        end
         local heading = Instance.new("Frame")
-        heading.Size,heading.BackgroundTransparency,heading.Parent = UDim2.new(1,0,0,30),1,contentFrame
+        heading.Size,heading.LayoutOrder,heading.BackgroundTransparency,heading.Parent = UDim2.new(1,0,0,28),0,1,contentFrame
         table.insert(ownedRows, heading)
-        text(heading,"WESTBOUND ESP",UDim2.new(1,0,1,0),Color3.fromRGB(235,235,235),13)
-        local legend = Instance.new("Frame")
-        legend.Size,legend.BackgroundTransparency,legend.Parent = UDim2.new(1,0,0,30),1,contentFrame
-        table.insert(ownedRows, legend)
-        local status = text(legend,"Blue Cowboys (0)  •  Red Outlaws (0)  •  Other (0)",UDim2.new(1,0,1,0),Color3.fromRGB(120,120,120),10)
-        row("Master ESP",s.enabled,function(v)s.enabled=v end)
-        row("Cowboys",s.cowboys,function(v)s.cowboys=v end)
-        row("Outlaws",s.outlaws,function(v)s.outlaws=v end)
-        row("Other teams",s.others,function(v)s.others=v end)
-        row("Labels",s.labels,function(v)s.labels=v end)
-        row("Names",s.names,function(v)s.names=v end)
-        row("Distance",s.distance,function(v)s.distance=v end)
-        row("Health",s.health,function(v)s.health=v end)
-        row("Tracers",s.tracers,function(v)s.tracers=v end)
-        row("2D boxes",s.boxes,function(v)s.boxes=v end)
-        row("Chams",s.chams,function(v)s.chams=v end)
-        row("Visual hitbox",s.hitbox,function(v)s.hitbox=v end)
-        row("Visible only",s.visibleOnly,function(v)s.visibleOnly=v end)
+        text(heading,"PLAYERS",UDim2.new(1,0,1,0),Color3.fromRGB(235,235,235),13)
+        local syncAdvanced
+        row("Player ESP",s.enabled,function(v)s.enabled=v end)
+        cycleRow("Team filter",{"All","Cowboys","Outlaws"},s.teamMode,function(v)
+            s.teamMode=v; s.cowboys=v=="All" or v=="Cowboys"; s.outlaws=v=="All" or v=="Outlaws"; s.others=v=="All"
+        end)
+        cycleRow("Style",{"Labels","Outline","Full"},s.style,function(v)
+            s.style=v; s.labels=true; s.chams=v=="Outline" or v=="Full"; s.boxes=v=="Full"; s.tracers=v=="Full"
+            if syncAdvanced then syncAdvanced() end
+        end)
+        local advancedButton = button(contentFrame,"More player options")
+        advancedButton.Size,advancedButton.LayoutOrder = UDim2.new(1,0,0,28),4
+        table.insert(ownedRows,advancedButton)
+        nextOrder = 5
+        local advancedOpen = false
+        local function advancedRow(key, labelText, initial, set)
+            local item=row(labelText,initial,set)
+            local frame=item.Parent; frame.Visible=false; table.insert(advancedRows,frame)
+            advancedControls[key]=item
+            return item
+        end
+        advancedRow("labels","Labels",s.labels,function(v)s.labels=v end)
+        advancedRow("names","Names",s.names,function(v)s.names=v end)
+        advancedRow("distance","Distance",s.distance,function(v)s.distance=v end)
+        advancedRow("health","Health",s.health,function(v)s.health=v end)
+        advancedRow("tracers","Tracers",s.tracers,function(v)s.tracers=v end)
+        advancedRow("boxes","2D boxes",s.boxes,function(v)s.boxes=v end)
+        advancedRow("chams","Chams",s.chams,function(v)s.chams=v end)
+        advancedRow("hitbox","Visual hitbox",s.hitbox,function(v)s.hitbox=v end)
+        advancedRow("visibleOnly","Visible only",s.visibleOnly,function(v)s.visibleOnly=v end)
         local distanceButton = row("Max distance",true,function() end,false)
+        local distanceFrame = distanceButton.Parent
+        distanceFrame.Visible = false
+        table.insert(advancedRows,distanceFrame)
         distanceButton.Text = "1000 studs"
         connect(distanceButton.Activated,function()
             choiceIndex = choiceIndex % #choices + 1; s.maxDistance = choices[choiceIndex]
             distanceButton.Text = s.maxDistance == math.huge and "Unlimited" or (tostring(s.maxDistance).." studs")
+        end)
+        syncAdvanced=function()
+            for key,item in pairs(advancedControls) do
+                local value=s[key]; item.Text=value and "ON" or "OFF"
+                item.TextColor3=value and Color3.fromRGB(240,240,240) or Color3.fromRGB(135,135,135)
+                item.BackgroundColor3=value and Color3.fromRGB(58,58,58) or Color3.fromRGB(34,34,34)
+            end
+        end
+        connect(advancedButton.Activated,function()
+            advancedOpen=not advancedOpen; advancedButton.Text=advancedOpen and "Fewer player options" or "More player options"
+            syncAdvanced()
+            for _,frame in ipairs(advancedRows) do frame.Visible=advancedOpen end
         end)
 
         local function kind(player)
@@ -110,12 +155,12 @@ return {
             record.highlight.Enabled = false
         end
         local function bind(record, character)
-            record.character,record.humanoid,record.root = character,character and character:FindFirstChildOfClass("Humanoid"),character and character:FindFirstChild("HumanoidRootPart")
+            record.character,record.humanoid,record.root,record.isVisible = character,character and character:FindFirstChildOfClass("Humanoid"),character and character:FindFirstChild("HumanoidRootPart"),nil
             record.highlight.Adornee,record.selection.Adornee = character,record.root; hide(record)
         end
         local function add(player)
             if player==localPlayer or records[player] then return end
-            local record = {player=player,name=text(overlay,"",UDim2.fromOffset(240,20),Color3.new(1,1,1),12),tracer=Instance.new("Frame"),box=Instance.new("Frame"),highlight=Instance.new("Highlight"),selection=Instance.new("SelectionBox")}
+            local record = {player=player,isVisible=nil,name=text(overlay,"",UDim2.fromOffset(240,20),Color3.new(1,1,1),12),tracer=Instance.new("Frame"),box=Instance.new("Frame"),highlight=Instance.new("Highlight"),selection=Instance.new("SelectionBox")}
             record.name.AnchorPoint,record.name.TextXAlignment = Vector2.new(.5,1),Enum.TextXAlignment.Center
             record.name.TextStrokeColor3,record.name.TextStrokeTransparency = Color3.new(0,0,0),0.35
             record.tracer.BorderSizePixel,record.tracer.AnchorPoint,record.tracer.BackgroundColor3,record.tracer.Size = 0,Vector2.new(0,.5),Color3.fromRGB(180,180,180),UDim2.fromOffset(0,1)
@@ -147,7 +192,7 @@ return {
             local delta=toPoint-fromPoint
             frame.Position,frame.Size,frame.Rotation=UDim2.fromOffset(fromPoint.X,fromPoint.Y),UDim2.fromOffset(delta.Magnitude,1),math.deg(math.atan2(delta.Y,delta.X))
         end
-        local function update(record,camera,viewport)
+        local function update(record,camera,viewport,heavy)
             local character=record.player.Character
             if character ~= record.character then bind(record,character) end
             if not character or not character.Parent then hide(record); return end
@@ -156,15 +201,24 @@ return {
             record.root,record.humanoid=root,humanoid
             if not s.enabled or not character or not root or not humanoid or humanoid.Health<=0 then hide(record); return end
             local distance,team=(camera.CFrame.Position-root.Position).Magnitude,kind(record.player)
-            if distance>s.maxDistance or not allowed(team) or (s.visibleOnly and not visible(character,root,camera)) then hide(record); return end
+            if distance>s.maxDistance or not allowed(team) then hide(record); return end
+            if s.visibleOnly then
+                if heavy or record.isVisible == nil then record.isVisible=visible(character,root,camera) end
+                if not record.isVisible then hide(record); return end
+            else
+                record.isVisible=true
+            end
             local color,rootPoint=colors[team],camera:WorldToViewportPoint(root.Position)
             if rootPoint.Z<=0 then hide(record); return end
-            local boxCf,boxSize=character:GetBoundingBox(); local minX,minY,maxX,maxY=viewport.X,viewport.Y,0,0; local allInFront=true
-            for x=-1,1,2 do for y=-1,1,2 do for z=-1,1,2 do
-                local point=camera:WorldToViewportPoint((boxCf*CFrame.new(boxSize.X*x/2,boxSize.Y*y/2,boxSize.Z*z/2)).Position)
-                if point.Z<=0 then allInFront=false else minX,minY,maxX,maxY=math.min(minX,point.X),math.min(minY,point.Y),math.max(maxX,point.X),math.max(maxY,point.Y) end
-            end end end
-            local valid=allInFront and maxX>minX and maxY>minY
+            local minX,minY,maxX,maxY,valid=0,0,0,0,false
+            if s.boxes then
+                local boxCf,boxSize=character:GetBoundingBox(); minX,minY,maxX,maxY=viewport.X,viewport.Y,0,0; local allInFront=true
+                for x=-1,1,2 do for y=-1,1,2 do for z=-1,1,2 do
+                    local point=camera:WorldToViewportPoint((boxCf*CFrame.new(boxSize.X*x/2,boxSize.Y*y/2,boxSize.Z*z/2)).Position)
+                    if point.Z<=0 then allInFront=false else minX,minY,maxX,maxY=math.min(minX,point.X),math.min(minY,point.Y),math.max(maxX,point.X),math.max(maxY,point.Y) end
+                end end end
+                valid=allInFront and maxX>minX and maxY>minY
+            end
             record.name.Visible=s.labels and (s.names or s.distance or s.health)
             if record.name.Visible then
                 local parts={}; if s.names then table.insert(parts,(record.player.DisplayName or record.player.Name).." ["..team.."]") end
@@ -177,17 +231,16 @@ return {
             record.highlight.Enabled,record.highlight.FillColor,record.highlight.OutlineColor=s.chams,color,color
             record.selection.Visible,record.selection.Adornee=s.hitbox,record.root
         end
-        local elapsed=0
+        local elapsed,heavyElapsed=0,0
         connect(RunService.RenderStepped,function(delta)
-            if dead then return end; elapsed=elapsed+delta; if elapsed<.05 then return end; elapsed=0
+            if dead then return end; elapsed=elapsed+delta; heavyElapsed=heavyElapsed+delta
             local camera=workspace.CurrentCamera
             if not camera then for _,record in pairs(records) do hide(record) end; return end
-            local viewport=camera.ViewportSize; local counts={Cowboys=0,Outlaws=0,Other=0}
+            local viewport=camera.ViewportSize
+            local heavy=heavyElapsed>=.15; if heavy then heavyElapsed=0 end
             for _,record in pairs(records) do
-                local teamName=kind(record.player); counts[teamName]=counts[teamName]+1
-                update(record,camera,viewport)
+                update(record,camera,viewport,heavy)
             end
-            status.Text = string.format("Blue Cowboys (%d)  •  Red Outlaws (%d)  •  Other (%d)",counts.Cowboys,counts.Outlaws,counts.Other)
         end)
         local cleanup
         cleanup=function()
