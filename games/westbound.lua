@@ -58,6 +58,13 @@ return {
         local gameKey=tostring(game.GameId or 0)
         if type(env.__HoneyBunHubSettings[gameKey])~="table" then env.__HoneyBunHubSettings[gameKey]={} end
         local saved=env.__HoneyBunHubSettings[gameKey]
+        local settingsAttribute="HoneyBunPlayerSettings_"..gameKey
+        local http=game:GetService("HttpService")
+        local ok,stored=pcall(function()
+            local encoded=playerGui:GetAttribute(settingsAttribute)
+            return type(encoded)=="string" and http:JSONDecode(encoded) or nil
+        end)
+        if ok and type(stored)=="table" then saved.player=stored end
         if type(saved.player)=="table" then
             for key,default in pairs(s) do
                 if type(saved.player[key])==type(default) then s[key]=saved.player[key] end
@@ -74,6 +81,12 @@ return {
         local advancedOpen=type(saved.player)=="table" and saved.player.advancedOpen==true
         saved.player=s
         s.advancedOpen=advancedOpen
+        local function saveSettings()
+            local snapshot={}
+            for key,value in pairs(s) do snapshot[key]=value end
+            if snapshot.maxDistance==math.huge then snapshot.maxDistance="Unlimited" end
+            pcall(function() playerGui:SetAttribute(settingsAttribute,http:JSONEncode(snapshot)) end)
+        end
         local colors = {Cowboys=Color3.fromRGB(75,145,235),Outlaws=Color3.fromRGB(220,75,75),Other=Color3.fromRGB(165,165,165)}
         local connections, records, ownedRows, advancedRows, advancedControls, dead = {}, {}, {}, {}, {}, false
         local nextOrder = 1
@@ -100,7 +113,7 @@ return {
             paint(initial)
             connect(item.Activated,function()
                 if toggle == false then set(initial); return end
-                initial=item.Text~="ON"; set(initial); paint(initial)
+                initial=item.Text~="ON"; set(initial); paint(initial); saveSettings()
             end)
             return item
         end
@@ -116,7 +129,7 @@ return {
                 local index=1
                 for i,value in ipairs(values) do if value==item.Text then index=i; break end end
                 index=index%#values+1
-                item.Text=values[index]; set(values[index])
+                item.Text=values[index]; set(values[index]); saveSettings()
             end)
             return item
         end
@@ -161,6 +174,7 @@ return {
         connect(distanceButton.Activated,function()
             choiceIndex = choiceIndex % #choices + 1; s.maxDistance = choices[choiceIndex]
             distanceButton.Text = s.maxDistance == math.huge and "Unlimited" or (tostring(s.maxDistance).." studs")
+            saveSettings()
         end)
         syncAdvanced=function()
             for key,item in pairs(advancedControls) do
@@ -174,6 +188,7 @@ return {
             s.advancedOpen=advancedOpen
             syncAdvanced()
             for _,frame in ipairs(advancedRows) do frame.Visible=advancedOpen end
+            saveSettings()
         end)
 
         local function kind(player)
@@ -277,6 +292,7 @@ return {
         local cleanup
         cleanup=function()
             if dead then return end; dead=true
+            saveSettings()
             if worldCleanup then worldCleanup() end
             for _,c in ipairs(connections) do c:Disconnect() end
             for player in pairs(records) do remove(player) end
@@ -294,6 +310,7 @@ return {
             notice.LayoutOrder, notice.TextWrapped = 100, true
             table.insert(ownedRows,notice)
         end
+        saveSettings()
         return cleanup
     end,
 }

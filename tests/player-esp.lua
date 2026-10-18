@@ -52,6 +52,7 @@ end
 function methods:WaitForChild(name)return assert(self:FindFirstChild(name),name)end
 function methods:IsA(class)return self.ClassName==class end
 function methods:GetAttribute(name)return self.attributes and self.attributes[name] end
+function methods:SetAttribute(name,value) self.attributes=self.attributes or {}; self.attributes[name]=value end
 function methods:IsDescendantOf(parent)
     local p=self.Parent;while p do if p==parent then return true end;p=p.Parent end;return false
 end
@@ -73,12 +74,25 @@ local camera={CFrame=CFrame.new(0,0,0),ViewportSize=vec(800,600)}
 function camera:WorldToViewportPoint(p)return vec(p.X+400,300-p.Y,p.Z),true end
 workspace.CurrentCamera=camera
 function workspace:Raycast()return nil end
-game={GetService=function(_,name)return assert(({Players=players,RunService=run})[name],name)end}
+local encodedSettings={}
+local function copy(value)
+    if type(value)~='table' then return value end
+    local out={};for key,item in pairs(value) do out[key]=copy(item) end;return out
+end
+local http={}
+function http:JSONEncode(value)
+    local token='json-'..tostring(#encodedSettings+1)
+    table.insert(encodedSettings,copy(value));return token
+end
+function http:JSONDecode(token) return copy(encodedSettings[tonumber(token:match('json%-(%d+)'))]) end
+game={GetService=function(_,name)return assert(({Players=players,RunService=run,HttpService=http})[name],name)end}
 DateTime={now=function()return {UnixTimestampMillis=1000}end}
 loadstring=load
 function game:HttpGet()return 'return function() return function() end end' end
 warn=print
 local content=Instance.new('ScrollingFrame')
+-- Separate executions may not share an executor's global table.
+getgenv=function() return {} end
 local module=dofile('games/westbound.lua')
 local cleanup=module.mount(content)
 assert(type(cleanup)=='function')

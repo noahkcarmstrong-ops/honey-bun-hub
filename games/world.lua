@@ -14,6 +14,18 @@ local function mount(contentFrame)
     local workspaceRoot = game:GetService("Workspace")
     local player = Players.LocalPlayer
     local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
+    local settingsAttribute = "HoneyBunWorldSettings_" .. tostring(game.GameId or 0)
+    local httpService = game:GetService("HttpService")
+    if playerGui and httpService then
+        local encoded = playerGui:GetAttribute(settingsAttribute)
+        if type(encoded) == "string" then
+            local ok, decoded = pcall(function() return httpService:JSONDecode(encoded) end)
+            if ok and type(decoded) == "table" then
+                gameSettings = decoded
+                perGameSettings.world = gameSettings
+            end
+        end
+    end
     local alive = true
     local function savedBool(name, default)
         if type(gameSettings[name]) == "boolean" then return gameSettings[name] end
@@ -44,6 +56,9 @@ local function mount(contentFrame)
         gameSettings.animalTypesDefault, gameSettings.rareTypesDefault = animalTypesDefault, rareTypesDefault
         gameSettings.distanceIndex = distanceIndex
         gameSettings.animalTypes, gameSettings.rareSelections = animalTypes, rareSelections
+        if playerGui and httpService then
+            pcall(function() playerGui:SetAttribute(settingsAttribute, httpService:JSONEncode(gameSettings)) end)
+        end
     end
 
     local function disconnectAll()

@@ -8,7 +8,7 @@ A minimal black, gray, and white Roblox hub. Press **Right Shift** to show or hi
 loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-hub/main/loader.lua", false))()
 ```
 
-Use **Refresh** in the menu for new versions. Refresh and re-running the loader restore your last player, animal, and chest settings, including filters, individual animal choices, distances, and expanded option lists. The previous visuals and listeners are removed before rebuilding. Settings are kept in memory for the current game session; closing Roblox clears them. The first update from an older version starts saving settings once this version is loaded.
+Use **Refresh** in the menu for new versions. Refresh and re-running the loader restore your last player, animal, and chest settings, including filters, individual animal choices, distances, and expanded option lists. The previous visuals and listeners are removed before rebuilding. Settings are backed up on the persistent PlayerGui, so restoring does not require executions to share global variables. Closing Roblox clears them. The first update from an older version starts saving settings once this version is loaded.
 
 ## Westbound
 

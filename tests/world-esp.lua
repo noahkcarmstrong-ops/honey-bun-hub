@@ -32,6 +32,7 @@ function methods:FindFirstAncestorOfClass(class)
     local p=self.Parent; while p do if p:IsA(class) then return p end; p=p.Parent end
 end
 function methods:GetAttribute(name) return self.attributes[name] end
+function methods:SetAttribute(name, value) self.attributes[name] = value end
 function methods:GetAttributes() return self.attributes end
 function methods:GetFullName()
     local names, current = {}, self
@@ -55,6 +56,10 @@ local function enum() return setmetatable({}, {__index=function(t,k)local v=enum
 Enum=enum()
 
 local run={Heartbeat=signal()}
+local encodedSettings={}
+local httpService={}
+function httpService:JSONEncode(value) local key="settings-" .. tostring(#encodedSettings + 1); encodedSettings[key]=value; return key end
+function httpService:JSONDecode(value) return encodedSettings[value] end
 local players={list={}}
 players.LocalPlayer=instance("Player")
 instance("PlayerGui",players.LocalPlayer)
@@ -68,7 +73,8 @@ function collection:HasTag(model, tag) return model.tags and model.tags[tag] or 
 workspace=instance("Workspace")
 workspace.CurrentCamera={CFrame={Position=Vector3.new(0,0,0)}}
 workspace.DescendantAdded=signal(); workspace.DescendantRemoving=signal()
-game={GetService=function(_,name)return ({Players=players,RunService=run,Workspace=workspace,CollectionService=collection})[name] end}
+game={GetService=function(_,name)return ({Players=players,RunService=run,Workspace=workspace,CollectionService=collection,HttpService=httpService})[name] end}
+getgenv=function() return {} end
 
 local function model(name, x, attrs)
     local m=instance("Model",workspace); m.Name=name; m.attributes=attrs or {}
@@ -153,6 +159,8 @@ rare.PrimaryPart.Position=Vector3.new(30,0,0);run.Heartbeat:Fire(.11)
 assert(findHighlights()==1,"restored camera and range restore chams")
 workspace.DescendantRemoving:Fire(rare); rare:Destroy(); assert(findHighlights()==0 and rareHighlight.destroyed,"removal destroys chams")
 fire("All animals: OFF"); fire("All rare animals: OFF")
+local persistedGui=players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+assert(type(persistedGui:GetAttribute("HoneyBunWorldSettings_0"))=="string","settings backup is written to PlayerGui")
 content:Destroy(); cleanup(); cleanup()
 for _,o in ipairs(objects) do if o.ClassName=="Highlight" then assert(o.destroyed,"cleanup destroys highlights") end end
 for _, c in ipairs(run.Heartbeat.listeners) do assert(not c.Connected,"cleanup disconnects heartbeat") end
