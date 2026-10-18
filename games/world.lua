@@ -97,6 +97,7 @@ local function mount(contentFrame)
     local rareTypesButton = row("Rare animal types", 110)
     local allRareButton = row("All rare animal types", 111)
     local noRareButton = row("No rare animal types", 112)
+    local reportButton = row("Copy visibility report", 113)
     local rareVariantNames = {
         {"dire wolf", "Dire Wolf"}, {"legendary bison", "Legendary Bison"},
         {"legendary deer", "Legendary Deer"}, {"legendary black bear", "Legendary Black Bear"},
@@ -105,7 +106,7 @@ local function mount(contentFrame)
         {"legendary bull moose", "Legendary Bull Moose"},
     }
     for _, variant in ipairs(rareVariantNames) do rareSelections[variant[1]] = true end
-    rangeButton.Visible, foundLabel.Visible = false, false
+    rangeButton.Visible, foundLabel.Visible, reportButton.Visible = false, false, false
 
     local function updateSpeciesButtons()
         for key, button in pairs(speciesButtons) do
@@ -130,7 +131,7 @@ local function mount(contentFrame)
         chestButton.Text = "Treasure chests: " .. (chests and "ON" or "OFF")
         rareButton.Text = "Rare animals only: " .. (rareOnly and "ON" or "OFF")
         moreButton.Text = advanced and "Hide world options" or "More world options"
-        rangeButton.Visible, foundLabel.Visible = advanced, advanced
+        rangeButton.Visible, foundLabel.Visible, reportButton.Visible = advanced, advanced, advanced
         local animalCount, rareCount, chestCount, eligibleChests, unknownChests = 0, 0, 0, 0, 0
         for _, item in pairs(tracked) do
             if item.kind == "animal" then
@@ -151,8 +152,92 @@ local function mount(contentFrame)
         end
         local value = distances[distanceIndex]
         rangeButton.Text = "Distance: " .. (value == math.huge and "Unlimited" or tostring(value))
+        local streaming = "unknown"
+        local ok, state = pcall(function() return workspaceRoot.StreamingEnabled end)
+        if ok and type(state) == "boolean" then streaming = state and "on" or "off" end
+        local farthest = 0
+        local camera = workspaceRoot.CurrentCamera
+        local cameraPosition
+        if camera then pcall(function() cameraPosition = camera.CFrame.Position end) end
+        if cameraPosition then
+            for _, item in pairs(tracked) do
+                local okDistance, distance = pcall(function() return (item.part.Position - cameraPosition).Magnitude end)
+                if okDistance and type(distance) == "number" and distance > farthest then farthest = distance end
+            end
+        end
+        if advanced then
+            foundLabel.Text = foundLabel.Text .. " · Streaming: " .. streaming .. " · Farthest tracked: " .. math.floor(farthest) .. " studs"
+        end
         updateSpeciesButtons()
     end
+    local function visibilityEnabled(item)
+        if item.kind == "animal" then
+            local allowed = item.rare and (not item.rareKey or rareSelections[item.rareKey] ~= false) or (not item.rare and item.speciesKey and animalTypes[item.speciesKey] ~= false)
+            return animals and ((rareOnly and item.rare and allowed) or (not rareOnly and allowed))
+        end
+        return chests and item.chestState == "unlooted"
+    end
+    local function visibilityReport()
+        local streaming = "unknown"
+        local ok, state = pcall(function() return workspaceRoot.StreamingEnabled end)
+        if ok and type(state) == "boolean" then streaming = state and "on" or "off" end
+        local camera = workspaceRoot.CurrentCamera
+        local cameraPosition
+        if camera then pcall(function() cameraPosition = camera.CFrame.Position end) end
+        local animalsFound, chestsFound, eligible, enabled, filtered, farthest = 0, 0, 0, 0, 0, 0
+        for _, item in pairs(tracked) do
+            if item.kind == "animal" then animalsFound = animalsFound + 1 else
+                chestsFound = chestsFound + 1
+                if item.chestState == "unlooted" then eligible = eligible + 1 end
+            end
+            if visibilityEnabled(item) then enabled = enabled + 1 else filtered = filtered + 1 end
+            if cameraPosition then
+                local okDistance, distance = pcall(function() return (item.part.Position - cameraPosition).Magnitude end)
+                if okDistance and type(distance) == "number" and distance > farthest then farthest = distance end
+            end
+        end
+        local queuedCount = 0
+        for _ in pairs(queued) do queuedCount = queuedCount + 1 end
+        local playersLoaded, playerFarthest = 0, 0
+        for _, other in ipairs(Players:GetPlayers()) do
+            local character = other.Character
+            local root
+            if character then root = character:FindFirstChild("HumanoidRootPart") or character.PrimaryPart end
+            if root then
+                playersLoaded = playersLoaded + 1
+                if cameraPosition then
+                    local okDistance, distance = pcall(function() return (root.Position - cameraPosition).Magnitude end)
+                    if okDistance and type(distance) == "number" and distance > playerFarthest then playerFarthest = distance end
+                end
+            end
+        end
+        local configured = distances[distanceIndex] == math.huge and "Unlimited" or tostring(distances[distanceIndex])
+        return table.concat({
+            "Honey Bun Hub visibility report",
+            "StreamingEnabled: " .. streaming,
+            "Configured distance: " .. configured,
+            "Animals discovered: " .. animalsFound,
+            "Chests discovered: " .. chestsFound,
+            "Eligible chests: " .. eligible,
+            "Enabled by filters: " .. enabled,
+            "Filtered by controls/state: " .. filtered,
+            "Farthest tracked target: " .. math.floor(farthest) .. " studs",
+            "Loaded player character roots: " .. playersLoaded,
+            "Farthest loaded player root: " .. math.floor(playerFarthest) .. " studs",
+            "Queue remaining: " .. queuedCount,
+        }, "\n")
+    end
+    reportButton.Activated:Connect(function()
+        local report = visibilityReport()
+        if type(setclipboard) == "function" then
+            local ok = pcall(setclipboard, report)
+            reportButton.Text = ok and "Visibility report copied" or "Report ready in console"
+            if not ok then warn(report) end
+        else
+            reportButton.Text = "Report ready in console"
+            warn(report)
+        end
+    end)
     animalButton.Activated:Connect(function() animals = not animals; refreshControls() end)
     chestButton.Activated:Connect(function() chests = not chests; refreshControls() end)
     rareButton.Activated:Connect(function()
@@ -409,8 +494,7 @@ local function mount(contentFrame)
                     item.chestState = "unlooted"
                 end
             end
-            local animalEnabled = item.rare and (not item.rareKey or rareSelections[item.rareKey] ~= false) or (not item.rare and item.speciesKey and animalTypes[item.speciesKey] ~= false)
-            local enabled = (item.kind == "animal" and animals and ((rareOnly and item.rare and animalEnabled) or (not rareOnly and animalEnabled))) or (item.kind == "chest" and chests and item.chestState == "unlooted")
+            local enabled = visibilityEnabled(item)
             if not model.Parent or not item.part.Parent then remove(model)
             elseif not enabled then if item.gui then item.gui.Enabled = false end
             else
