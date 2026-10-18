@@ -14,7 +14,7 @@ Use **Refresh** in the menu for new versions. Refresh resets switches to their d
 
 Westbound is detected automatically by universe ID. Open the top **ESP** tab. Player, animal, and treasure chest switches start **OFF**. Extra controls are tucked under **More player options** and **More world options**.
 
-- **Player ESP:** Cowboys blue, Outlaws red, other teams gray; a team filter and compact style presets. Name, distance and health labels; tracers; 2D boxes; chams; visual root hitbox outlines; visible-only filter; distance limits.
+- **Player ESP:** Cowboys blue, Outlaws red, other teams gray; a team filter and compact style presets. Name, distance and health labels; tracers; chams; visual root hitbox outlines; visible-only filter; distance limits, starting at **Unlimited**.
 - **World controls:** animal type and distance; treasure chests with replicated gold amount when available. Animals and treasure chests can be switched separately, with an independent distance limit.
 
 The hitbox option is a visual outline only and does not alter character hitboxes. Team classification uses actual team names containing Cowboy or Outlaw; other roles stay under Other teams.
