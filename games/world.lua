@@ -7,7 +7,7 @@ local function mount(contentFrame)
     local player = Players.LocalPlayer
     local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
     local alive = true
-    local animals, chests, advanced, rareOnly = false, false, false, false
+    local animals, chests, advanced, rareOnly, animalChams = false, false, false, false, false
     local animalTypesExpanded, rareTypesExpanded = false, false
     local animalTypes, speciesButtons, speciesButtonLabels = {}, {}, {}
     local animalTypesDefault, rareTypesDefault = true, true
@@ -33,6 +33,7 @@ local function mount(contentFrame)
         for model in pairs(tracked) do
             local item = tracked[model]
             if item.gui then item.gui:Destroy() end
+            if item.chams then item.chams:Destroy() end
             tracked[model] = nil
         end
         for _, object in ipairs(owned) do object:Destroy() end
@@ -84,20 +85,23 @@ local function mount(contentFrame)
     end
 
     local heading = label("WORLD", 100, 24, Color3.fromRGB(245, 245, 245))
-    local animalButton = row("Animals: OFF", 101)
-    local chestButton = row("Treasure chests: OFF", 102)
-    local moreButton = row("More world options", 103)
-    local rangeButton = row("Distance: Unlimited", 104)
-    local foundLabel = label("No targets discovered yet", 105, 20, Color3.fromRGB(150, 150, 150))
+    label("ANIMALS", 101, 20, Color3.fromRGB(190, 190, 190))
+    local animalButton = row("Animal ESP: OFF", 102)
+    local animalChamsButton = row("Animal chams: OFF", 103)
+    local rareButton = row("Rare animals only: OFF", 104)
+    local animalTypesButton = row("Choose animals", 105)
+    local allAnimalsButton = row("All animals: ON", 106)
+    local noAnimalsButton = row("All animals: OFF", 107)
+    local rareTypesButton = row("Choose rare animals", 108)
+    local allRareButton = row("All rare animals: ON", 109)
+    local noRareButton = row("All rare animals: OFF", 110)
+    local treasureHeading = label("TREASURE", 200, 20, Color3.fromRGB(190, 190, 190))
+    local chestButton = row("Treasure chests: OFF", 201)
+    local moreButton = row("More world options", 202)
+    local rangeButton = row("Distance: Unlimited", 203)
+    local foundLabel = label("No targets discovered yet", 204, 20, Color3.fromRGB(150, 150, 150))
     foundLabel.Size, foundLabel.TextWrapped = UDim2.new(1, -8, 0, 48), true
-    local animalTypesButton = row("Animal types", 106)
-    local allAnimalsButton = row("All animal types", 107)
-    local noAnimalsButton = row("No animal types", 108)
-    local rareButton = row("Rare animals only: OFF", 109)
-    local rareTypesButton = row("Rare animal types", 110)
-    local allRareButton = row("All rare animal types", 111)
-    local noRareButton = row("No rare animal types", 112)
-    local reportButton = row("Copy visibility report", 113)
+    local reportButton = row("Copy visibility report", 205)
     local rareVariantNames = {
         {"dire wolf", "Dire Wolf"}, {"legendary bison", "Legendary Bison"},
         {"legendary deer", "Legendary Deer"}, {"legendary black bear", "Legendary Black Bear"},
@@ -108,26 +112,54 @@ local function mount(contentFrame)
     for _, variant in ipairs(rareVariantNames) do rareSelections[variant[1]] = true end
     rangeButton.Visible, foundLabel.Visible, reportButton.Visible = false, false, false
 
+    local function sortedKeys(items)
+        local keys = {}
+        for key in pairs(items) do table.insert(keys, key) end
+        table.sort(keys)
+        return keys
+    end
     local function updateSpeciesButtons()
-        for key, button in pairs(speciesButtons) do
-            button.Visible = animals and animalTypesExpanded
-            button.Text = (animalTypes[key] and "✓ " or "  ") .. speciesButtonLabels[key]
-        end
+        local order = 105
+        animalTypesButton.LayoutOrder = order
+        animalTypesButton.Text = animalTypesExpanded and "Hide animal choices" or "Choose animals"
         animalTypesButton.Visible = animals
-        allAnimalsButton.Visible = animals and animalTypesExpanded
-        noAnimalsButton.Visible = animals and animalTypesExpanded
-        rareButton.Visible = animals
-        rareTypesButton.Visible = animals
-        allRareButton.Visible = animals and rareTypesExpanded
-        noRareButton.Visible = animals and rareTypesExpanded
-        for key, button in pairs(rareButtons) do
-            button.Visible = animals and rareTypesExpanded
-            button.Text = (rareSelections[key] and "✓ " or "  ") .. rareButtonLabels[key]
+        order = order + 1
+        allAnimalsButton.LayoutOrder, noAnimalsButton.LayoutOrder = order, order + 1
+        allAnimalsButton.Visible, noAnimalsButton.Visible = animals and animalTypesExpanded, animals and animalTypesExpanded
+        order = order + 2
+        for _, key in ipairs(sortedKeys(speciesButtons)) do
+            local button = speciesButtons[key]
+            button.LayoutOrder = order
+            button.Visible = animals and animalTypesExpanded
+            button.Text = speciesButtonLabels[key] .. ": " .. (animalTypes[key] and "ON" or "OFF")
+            button.BackgroundColor3 = animalTypes[key] and Color3.fromRGB(55, 55, 55) or Color3.fromRGB(30, 30, 30)
+            order = order + 1
         end
+        rareTypesButton.LayoutOrder = order
+        rareTypesButton.Text = rareTypesExpanded and "Hide rare animal choices" or "Choose rare animals"
+        rareTypesButton.Visible = animals
+        order = order + 1
+        allRareButton.LayoutOrder, noRareButton.LayoutOrder = order, order + 1
+        allRareButton.Visible, noRareButton.Visible = animals and rareTypesExpanded, animals and rareTypesExpanded
+        order = order + 2
+        for _, key in ipairs(sortedKeys(rareButtons)) do
+            local button = rareButtons[key]
+            button.LayoutOrder = order
+            button.Visible = animals and rareTypesExpanded
+            button.Text = rareButtonLabels[key] .. ": " .. (rareSelections[key] and "ON" or "OFF")
+            button.BackgroundColor3 = rareSelections[key] and Color3.fromRGB(55, 55, 55) or Color3.fromRGB(30, 30, 30)
+            order = order + 1
+        end
+        rareButton.LayoutOrder = 104
+        rareButton.Visible = animals
+        treasureHeading.LayoutOrder, chestButton.LayoutOrder = order + 1, order + 2
+        moreButton.LayoutOrder, rangeButton.LayoutOrder = order + 3, order + 4
+        foundLabel.LayoutOrder, reportButton.LayoutOrder = order + 5, order + 6
     end
 
     local function refreshControls()
-        animalButton.Text = "Animals: " .. (animals and "ON" or "OFF")
+        animalButton.Text = "Animal ESP: " .. (animals and "ON" or "OFF")
+        animalChamsButton.Text = "Animal chams: " .. (animalChams and "ON" or "OFF")
         chestButton.Text = "Treasure chests: " .. (chests and "ON" or "OFF")
         rareButton.Text = "Rare animals only: " .. (rareOnly and "ON" or "OFF")
         moreButton.Text = advanced and "Hide world options" or "More world options"
@@ -239,6 +271,7 @@ local function mount(contentFrame)
         end
     end)
     animalButton.Activated:Connect(function() animals = not animals; refreshControls() end)
+    animalChamsButton.Activated:Connect(function() animalChams = not animalChams; refreshControls() end)
     chestButton.Activated:Connect(function() chests = not chests; refreshControls() end)
     rareButton.Activated:Connect(function()
         rareOnly = not rareOnly
@@ -278,7 +311,7 @@ local function mount(contentFrame)
     local function addRareButton(key, display)
         if rareButtons[key] then return end
         rareButtonCount = rareButtonCount + 1
-        local button = row("  " .. display, 112 + rareButtonCount)
+        local button = row(display .. ": ON", 160 + rareButtonCount)
         button.Visible = false
         rareButtonLabels[key] = display
         button.Activated:Connect(function()
@@ -298,7 +331,8 @@ local function mount(contentFrame)
     local function speciesLabel(value)
         local text = tostring(value or ""):gsub("[%{%(%[].*$", ""):gsub("(%l)(%u)", "%1 %2"):gsub("[_%-]+", " "):gsub("%s+", " ")
         text = text:gsub("%s+[Uu][Uu][Ii][Dd].*", "")
-        return text:match("^%s*(.-)%s*$")
+        text = text:match("^%s*(.-)%s*$")
+        return text:gsub("^%l", string.upper)
     end
     local function canonicalRareKey(value)
         local text = lower(speciesLabel(value))
@@ -382,6 +416,26 @@ local function mount(contentFrame)
         if model.PrimaryPart then return model.PrimaryPart end
         return model:FindFirstChildWhichIsA("BasePart", true)
     end
+    local function setChams(item, enabled)
+        if item.kind ~= "animal" then return end
+        if not enabled then
+            if item.chams then item.chams.Enabled = false end
+            return
+        end
+        if not item.chams then
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "AnimalChams"
+            highlight.Adornee = item.model
+            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            highlight.FillTransparency = 0.55
+            highlight.OutlineTransparency = 0
+            highlight.Parent = item.model
+            item.chams = highlight
+        end
+        item.chams.FillColor = item.rare and Color3.fromRGB(255, 205, 65) or Color3.fromRGB(90, 220, 110)
+        item.chams.OutlineColor = item.chams.FillColor
+        item.chams.Enabled = true
+    end
     local function goldFor(model)
         local names = {Gold=true, GoldAmount=true, TreasureGold=true, RewardGold=true, GoldValue=true, Coins=true}
         for key in pairs(names) do
@@ -417,7 +471,11 @@ local function mount(contentFrame)
     end
     local function remove(model)
         local item = tracked[model]
-        if item then if item.gui then item.gui:Destroy() end; tracked[model] = nil end
+        if item then
+            if item.gui then item.gui:Destroy() end
+            if item.chams then item.chams:Destroy() end
+            tracked[model] = nil
+        end
     end
     local function add(model)
         if tracked[model] or not model.Parent then return end
@@ -435,10 +493,10 @@ local function mount(contentFrame)
         if not part then return end
         speciesKeyValue = kind == "animal" and speciesKeyValue or nil
         if speciesKeyValue and animalTypes[speciesKeyValue] == nil then animalTypes[speciesKeyValue] = animalTypesDefault end
-        tracked[model] = {kind=kind, label=label, speciesKey=speciesKeyValue, rare=rare, rareKey=rareKey, part=part, gui=nil, gold=nil, goldChecked=false, nextGoldAt=0, chestState="unknown"}
+        tracked[model] = {model=model, kind=kind, label=label, speciesKey=speciesKeyValue, rare=rare, rareKey=rareKey, part=part, gui=nil, chams=nil, gold=nil, goldChecked=false, nextGoldAt=0, chestState="unknown"}
         if speciesKeyValue and not speciesButtons[speciesKeyValue] then
             speciesButtonCount = speciesButtonCount + 1
-            local button = row("  " .. label, 108 + speciesButtonCount)
+            local button = row(label .. ": ON", 120 + speciesButtonCount)
             button.Visible = false
             speciesButtonLabels[speciesKeyValue] = label
             button.Activated:Connect(function()
@@ -446,6 +504,7 @@ local function mount(contentFrame)
                 refreshControls()
             end)
             speciesButtons[speciesKeyValue] = button
+            updateSpeciesButtons()
         end
     end
 
@@ -473,7 +532,10 @@ local function mount(contentFrame)
         if not playerGui then playerGui = player and player:FindFirstChildOfClass("PlayerGui") end
         local camera = workspaceRoot.CurrentCamera
         if not camera then
-            for _, item in pairs(tracked) do if item.gui then item.gui.Enabled = false end end
+            for _, item in pairs(tracked) do
+                if item.gui then item.gui.Enabled = false end
+                setChams(item, false)
+            end
             return
         end
         if heartbeatClock < 0.1 then return end
@@ -496,7 +558,9 @@ local function mount(contentFrame)
             end
             local enabled = visibilityEnabled(item)
             if not model.Parent or not item.part.Parent then remove(model)
-            elseif not enabled then if item.gui then item.gui.Enabled = false end
+            elseif not enabled then
+                if item.gui then item.gui.Enabled = false end
+                setChams(item, false)
             else
                 local distance = (item.part.Position - origin).Magnitude
                 if distance <= distances[distanceIndex] then
@@ -517,7 +581,11 @@ local function mount(contentFrame)
                     item.text.Text = item.kind == "animal" and (item.label .. " · " .. math.floor(distance) .. " studs") or ("Treasure chest" .. (item.gold and (" · Gold: " .. tostring(item.gold)) or "") .. " · " .. math.floor(distance) .. " studs")
                         item.text.TextColor3 = item.kind == "animal" and (item.rare and Color3.fromRGB(255, 220, 90) or Color3.fromRGB(180, 255, 180)) or Color3.fromRGB(255, 225, 130)
                     item.gui.Enabled = true
-                elseif item.gui then item.gui.Enabled = false end
+                    setChams(item, animalChams)
+                else
+                    if item.gui then item.gui.Enabled = false end
+                    setChams(item, false)
+                end
             end
         end
         if advanced then refreshControls() end

@@ -12,12 +12,14 @@ Use **Refresh** in the menu for new versions. Refresh resets switches to their d
 
 ## Westbound
 
-Westbound is detected automatically by universe ID. Open the top **ESP** tab. Player, animal, and treasure chest switches start **OFF**. Extra controls are tucked under **More player options** and **More world options**.
+Westbound is detected automatically by universe ID. Open the top **ESP** tab. Player, animal, and treasure chest switches start **OFF**. Animal controls have their own section; extra player controls and world diagnostics are tucked under **More player options** and **More world options**.
 
 - **Player ESP:** Cowboys blue, Outlaws red, other teams gray; a team filter and compact style presets. Name, distance and health labels; tracers; chams; visual root hitbox outlines; visible-only filter; distance limits, starting at **Unlimited**.
 - **World controls:** animal type and distance; treasure chests with replicated gold amount when available. Animals and treasure chests can be switched separately, with an independent distance limit starting at **Unlimited**. **Animal types** lets you choose individual species. **Rare animal types** lists all supported rare variants even before they spawn. Opening either list preserves selections; turning rare-only on selects rare variants after None. **Rare animals only** filters to animals with readable rarity markers or legendary/Dire Wolf names; rare labels are gold and preserve the variant name. Objects must be loaded by the game to be detected.
 
 The hitbox option is a visual outline only and does not alter character hitboxes. Team classification uses actual team names containing Cowboy or Outlaw; other roles stay under Other teams.
+
+**Animal chams** highlights selected animals through scenery: green for ordinary animals and gold for rare ones. Turn on **Animal ESP**, then **Animal chams**. Chams use the same animal selections, rare-only filter, and distance setting as animal labels. They start off and disappear when the animal is filtered out, removed, or the hub is refreshed. **Choose animals** and **Choose rare animals** expand grouped lists with explicit ON/OFF selections; opening a list keeps your selections.
 
 **Outlaw bounty** is under **More player options**. With Player ESP and Labels enabled, it adds a second line to outlaw markers. It reads an explicit `Bounty` player attribute, `leaderstats.Bounty`, or a direct `Bounty` value, updating about every 0.15 seconds. If no readable amount exists, it shows **Bounty unavailable**, never an assumed zero. These field paths still need verification in live Westbound.
 
