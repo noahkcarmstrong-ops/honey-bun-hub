@@ -53,7 +53,27 @@ return {
         local old = playerGui:FindFirstChild("HoneyBunWestboundESP")
         if old then old:Destroy() end
         local s = {enabled=false,cowboys=true,outlaws=true,others=true,labels=true,names=true,distance=true,health=true,bounty=false,tracers=false,chams=false,hitbox=false,visibleOnly=false,maxDistance=math.huge,teamMode="All",style="Labels"}
+        local env=type(getgenv)=="function" and getgenv() or _G
+        if type(env.__HoneyBunHubSettings)~="table" then env.__HoneyBunHubSettings={} end
+        local gameKey=tostring(game.GameId or 0)
+        if type(env.__HoneyBunHubSettings[gameKey])~="table" then env.__HoneyBunHubSettings[gameKey]={} end
+        local saved=env.__HoneyBunHubSettings[gameKey]
+        if type(saved.player)=="table" then
+            for key,default in pairs(s) do
+                if type(saved.player[key])==type(default) then s[key]=saved.player[key] end
+            end
+        end
         local choices, choiceIndex = {500,1000,2500,math.huge}, 4
+        local validDistance=false
+        for index,value in ipairs(choices) do if s.maxDistance==value then choiceIndex=index;validDistance=true end end
+        if not validDistance then s.maxDistance=math.huge end
+        if s.teamMode~="All" and s.teamMode~="Cowboys" and s.teamMode~="Outlaws" then s.teamMode="All" end
+        if s.style~="Labels" and s.style~="Outline" and s.style~="Full" then s.style="Labels" end
+        s.cowboys=s.teamMode=="All" or s.teamMode=="Cowboys"
+        s.outlaws=s.teamMode=="All" or s.teamMode=="Outlaws";s.others=s.teamMode=="All"
+        local advancedOpen=type(saved.player)=="table" and saved.player.advancedOpen==true
+        saved.player=s
+        s.advancedOpen=advancedOpen
         local colors = {Cowboys=Color3.fromRGB(75,145,235),Outlaws=Color3.fromRGB(220,75,75),Other=Color3.fromRGB(165,165,165)}
         local connections, records, ownedRows, advancedRows, advancedControls, dead = {}, {}, {}, {}, {}, false
         local nextOrder = 1
@@ -80,7 +100,7 @@ return {
             paint(initial)
             connect(item.Activated,function()
                 if toggle == false then set(initial); return end
-                initial=not initial; set(initial); paint(initial)
+                initial=item.Text~="ON"; set(initial); paint(initial)
             end)
             return item
         end
@@ -117,10 +137,10 @@ return {
         advancedButton.Size,advancedButton.LayoutOrder = UDim2.new(1,0,0,28),4
         table.insert(ownedRows,advancedButton)
         nextOrder = 5
-        local advancedOpen = false
+        advancedButton.Text=advancedOpen and "Fewer player options" or "More player options"
         local function advancedRow(key, labelText, initial, set)
             local item=row(labelText,initial,set)
-            local frame=item.Parent; frame.Visible=false; table.insert(advancedRows,frame)
+            local frame=item.Parent; frame.Visible=advancedOpen; table.insert(advancedRows,frame)
             advancedControls[key]=item
             return item
         end
@@ -135,9 +155,9 @@ return {
         advancedRow("visibleOnly","Visible only",s.visibleOnly,function(v)s.visibleOnly=v end)
         local distanceButton = row("Max distance",true,function() end,false)
         local distanceFrame = distanceButton.Parent
-        distanceFrame.Visible = false
+        distanceFrame.Visible = advancedOpen
         table.insert(advancedRows,distanceFrame)
-        distanceButton.Text = "Unlimited"
+        distanceButton.Text = s.maxDistance==math.huge and "Unlimited" or (tostring(s.maxDistance).." studs")
         connect(distanceButton.Activated,function()
             choiceIndex = choiceIndex % #choices + 1; s.maxDistance = choices[choiceIndex]
             distanceButton.Text = s.maxDistance == math.huge and "Unlimited" or (tostring(s.maxDistance).." studs")
@@ -151,6 +171,7 @@ return {
         end
         connect(advancedButton.Activated,function()
             advancedOpen=not advancedOpen; advancedButton.Text=advancedOpen and "Fewer player options" or "More player options"
+            s.advancedOpen=advancedOpen
             syncAdvanced()
             for _,frame in ipairs(advancedRows) do frame.Visible=advancedOpen end
         end)

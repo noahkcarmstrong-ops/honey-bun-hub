@@ -2,24 +2,49 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 
+local settingsEnv = type(getgenv) == "function" and getgenv() or _G
+settingsEnv.__HoneyBunHubSettings = type(settingsEnv.__HoneyBunHubSettings) == "table" and settingsEnv.__HoneyBunHubSettings or {}
+local settingsGameKey = tostring(game.GameId or 0)
+local perGameSettings = type(settingsEnv.__HoneyBunHubSettings[settingsGameKey]) == "table" and settingsEnv.__HoneyBunHubSettings[settingsGameKey] or {}
+local gameSettings = type(perGameSettings.world) == "table" and perGameSettings.world or {}
+perGameSettings.world = gameSettings
+settingsEnv.__HoneyBunHubSettings[settingsGameKey] = perGameSettings
+
 local function mount(contentFrame)
     local workspaceRoot = game:GetService("Workspace")
     local player = Players.LocalPlayer
     local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
     local alive = true
-    local animals, chests, advanced, rareOnly, animalChams = false, false, false, false, false
-    local animalTypesExpanded, rareTypesExpanded = false, false
-    local animalTypes, speciesButtons, speciesButtonLabels = {}, {}, {}
-    local animalTypesDefault, rareTypesDefault = true, true
-    local rareSelections, rareButtons, rareButtonLabels = {}, {}, {}
+    local function savedBool(name, default)
+        if type(gameSettings[name]) == "boolean" then return gameSettings[name] end
+        return default
+    end
+    local animals, chests, advanced, rareOnly, animalChams = savedBool("animals", false), savedBool("chests", false), savedBool("advanced", false), savedBool("rareOnly", false), savedBool("animalChams", false)
+    local animalTypesExpanded, rareTypesExpanded = savedBool("animalTypesExpanded", false), savedBool("rareTypesExpanded", false)
+    local animalTypes = type(gameSettings.animalTypes) == "table" and gameSettings.animalTypes or {}
+    local speciesButtons, speciesButtonLabels = {}, {}
+    local animalTypesDefault, rareTypesDefault = savedBool("animalTypesDefault", true), savedBool("rareTypesDefault", true)
+    local rareSelections = type(gameSettings.rareSelections) == "table" and gameSettings.rareSelections or {}
+    local rareButtons, rareButtonLabels = {}, {}
     local speciesButtonCount = 0
     local rareButtonCount = 0
     local distances = {500, 1000, 2500, math.huge}
-    local distanceIndex = 4
+    local distanceIndex = type(gameSettings.distanceIndex) == "number" and math.floor(gameSettings.distanceIndex) or 4
+    if distanceIndex ~= distanceIndex or distanceIndex < 1 or distanceIndex > 4 then distanceIndex = 4 end
     local queue, queued, tracked = {}, {}, {}
     local queueHead, queueTail = 1, 0
     local connections, owned = {}, {}
     local heartbeatClock, elapsed = 0, 0
+
+    local function saveSettings()
+        gameSettings.animals, gameSettings.chests = animals, chests
+        gameSettings.advanced, gameSettings.rareOnly = advanced, rareOnly
+        gameSettings.animalChams = animalChams
+        gameSettings.animalTypesExpanded, gameSettings.rareTypesExpanded = animalTypesExpanded, rareTypesExpanded
+        gameSettings.animalTypesDefault, gameSettings.rareTypesDefault = animalTypesDefault, rareTypesDefault
+        gameSettings.distanceIndex = distanceIndex
+        gameSettings.animalTypes, gameSettings.rareSelections = animalTypes, rareSelections
+    end
 
     local function disconnectAll()
         for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
@@ -28,6 +53,7 @@ local function mount(contentFrame)
 
     local function cleanup()
         if not alive then return end
+        saveSettings()
         alive = false
         disconnectAll()
         for model in pairs(tracked) do
@@ -109,7 +135,9 @@ local function mount(contentFrame)
         {"legendary coyote", "Legendary Coyote"}, {"legendary dire wolf", "Legendary Dire Wolf"},
         {"legendary bull moose", "Legendary Bull Moose"},
     }
-    for _, variant in ipairs(rareVariantNames) do rareSelections[variant[1]] = true end
+    for _, variant in ipairs(rareVariantNames) do
+        if type(rareSelections[variant[1]]) ~= "boolean" then rareSelections[variant[1]] = rareTypesDefault end
+    end
     rangeButton.Visible, foundLabel.Visible, reportButton.Visible = false, false, false
 
     local function sortedKeys(items)
@@ -201,6 +229,7 @@ local function mount(contentFrame)
             foundLabel.Text = foundLabel.Text .. " · Streaming: " .. streaming .. " · Farthest tracked: " .. math.floor(farthest) .. " studs"
         end
         updateSpeciesButtons()
+        saveSettings()
     end
     local function visibilityEnabled(item)
         if item.kind == "animal" then

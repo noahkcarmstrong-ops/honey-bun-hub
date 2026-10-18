@@ -154,8 +154,30 @@ workspace.CurrentCamera=camera
 players.PlayerRemoving:Fire(enemy)
 assert(not find('Highlight'),'Leaving player must remove overlays')
 for _,c in ipairs(enemy.CharacterAdded.listeners)do assert(not c.Connected,'Player removal must disconnect character listener')end
+toggle('Team filter');toggle('Style');toggle('Names');toggle('Outlaw bounty');toggle('Max distance')
+for _,o in ipairs(content:GetChildren())do if o.Text=='More player options' then o.Activated:Fire() end end
 content:Destroy();cleanup();cleanup()
 for _,c in ipairs(run.RenderStepped.listeners)do assert(not c.Connected,'Cleanup must stop rendering')end
+content=Instance.new('ScrollingFrame')
+cleanup=dofile('games/westbound.lua').mount(content)
+local function control(title)
+    for _,frame in ipairs(content:GetChildren())do
+        for _,o in ipairs(frame:GetChildren())do
+            if o.ClassName=='TextLabel' and o.Text==title then
+                for _,item in ipairs(frame:GetChildren())do if item.ClassName=='TextButton' then return item end end
+            end
+        end
+    end
+    error('Missing control '..title)
+end
+assert(control('Player ESP').Text=='ON','Player ESP survives loader re-execution')
+assert(control('Team filter').Text=='Cowboys' and control('Style').Text=='Outline','Filters and style restore')
+assert(control('Names').Text=='OFF' and control('Outlaw bounty').Text=='ON','False and true switches restore')
+assert(control('Max distance').Text=='500 studs' and control('Max distance').Parent.Visible,'Range and expanded options restore')
+run.RenderStepped:Fire(.2)
+assert(find('Highlight').Enabled,'Restored settings enable actual visuals')
+toggle('Max distance');assert(control('Max distance').Text=='1000 studs','Distance cycles from restored choice')
+content:Destroy();cleanup()
 print('Player ESP lifecycle, filters, respawns, toggles, and cleanup passed.')
 
 

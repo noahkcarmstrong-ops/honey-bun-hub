@@ -8,11 +8,11 @@ A minimal black, gray, and white Roblox hub. Press **Right Shift** to show or hi
 loadstring(game:HttpGet("https://raw.githubusercontent.com/noahkcarmstrong-ops/honey-bun-hub/main/loader.lua", false))()
 ```
 
-Use **Refresh** in the menu for new versions. Refresh resets switches to their defaults and removes the previous visuals and listeners.
+Use **Refresh** in the menu for new versions. Refresh and re-running the loader restore your last player, animal, and chest settings, including filters, individual animal choices, distances, and expanded option lists. The previous visuals and listeners are removed before rebuilding. Settings are kept in memory for the current game session; closing Roblox clears them. The first update from an older version starts saving settings once this version is loaded.
 
 ## Westbound
 
-Westbound is detected automatically by universe ID. Open the top **ESP** tab. Player, animal, and treasure chest switches start **OFF**. Animal controls have their own section; extra player controls and world diagnostics are tucked under **More player options** and **More world options**.
+Westbound is detected automatically by universe ID. Open the top **ESP** tab. Player, animal, and treasure chest switches start **OFF** on first use, then restore your saved selections. Animal controls have their own section; extra player controls and world diagnostics are tucked under **More player options** and **More world options**.
 
 - **Player ESP:** Cowboys blue, Outlaws red, other teams gray; a team filter and compact style presets. Name, distance and health labels; tracers; chams; visual root hitbox outlines; visible-only filter; distance limits, starting at **Unlimited**.
 - **World controls:** animal type and distance; treasure chests with replicated gold amount when available. Animals and treasure chests can be switched separately, with an independent distance limit starting at **Unlimited**. **Animal types** lets you choose individual species. **Rare animal types** lists all supported rare variants even before they spawn. Opening either list preserves selections; turning rare-only on selects rare variants after None. **Rare animals only** filters to animals with readable rarity markers or legendary/Dire Wolf names; rare labels are gold and preserve the variant name. Objects must be loaded by the game to be detected.
