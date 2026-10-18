@@ -32,6 +32,7 @@ end
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "HoneyBunHub"
+gui.DisplayOrder = 100
 gui.ResetOnSpawn = false
 gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = playerGui
@@ -81,7 +82,23 @@ line.Position = UDim2.fromOffset(28, 96)
 line.Size = UDim2.new(1, -56, 0, 1)
 line.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 line.BorderSizePixel = 0
-text(panel, "OVERVIEW", UDim2.fromOffset(28, 120), UDim2.new(1, -56, 0, 20), 11, 120)
+text(panel, path and "PLAYER ESP" or "OVERVIEW", UDim2.fromOffset(28, 120), UDim2.new(1, -170, 0, 20), 11, 120)
+
+local content = Instance.new("ScrollingFrame")
+content.Name = "GameContent"
+content.Position = UDim2.fromOffset(28, 160)
+content.Size = UDim2.new(1, -56, 1, -238)
+content.BackgroundTransparency = 1
+content.BorderSizePixel = 0
+content.ScrollBarThickness = 2
+content.ScrollBarImageColor3 = Color3.fromRGB(90, 90, 90)
+content.CanvasSize = UDim2.fromOffset(0, 0)
+content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+content.ScrollingDirection = Enum.ScrollingDirection.Y
+content.Parent = panel
+local layout = Instance.new("UIListLayout", content)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Padding = UDim.new(0, 8)
 
 
 local refresh = Instance.new("TextButton")
@@ -131,4 +148,19 @@ local connection = Input.InputBegan:Connect(function(key)
         panel.Visible = not panel.Visible
     end
 end)
-gui.Destroying:Connect(function() connection:Disconnect() end)
+local cleanup
+gui.Destroying:Connect(function()
+    connection:Disconnect()
+    if cleanup then cleanup() end
+end)
+
+if type(current.mount) == "function" then
+    local ok, result = pcall(current.mount, content)
+    if ok and type(result) == "function" then
+        cleanup = result
+    elseif not ok then
+        warn("Honey Bun Hub: game menu failed to load", result)
+        text(content, "Game menu failed to load. Refresh to retry.",
+            UDim2.fromOffset(0, 0), UDim2.new(1, -8, 0, 40), 12, 170).TextWrapped = true
+    end
+end
