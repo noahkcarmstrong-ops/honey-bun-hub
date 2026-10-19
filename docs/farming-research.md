@@ -1,3 +1,5 @@
+> Archived: auto farm was removed from the hub at the user's request. These notes describe the previous experiment; its source remains in Git history.
+
 # Westbound farming research
 
 Research date: 2026-10-18

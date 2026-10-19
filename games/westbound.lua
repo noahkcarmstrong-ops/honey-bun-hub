@@ -47,7 +47,6 @@ end
 
 return {
     name = "WESTBOUND",
-    farmPath = "games/farm.lua",
     description = "Player ESP and visual hitbox helpers for Westbound.",
     mount = function(contentFrame)
         local localPlayer, playerGui = Players.LocalPlayer, Players.LocalPlayer:WaitForChild("PlayerGui")

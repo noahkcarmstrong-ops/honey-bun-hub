@@ -26,7 +26,7 @@ Instance.new=function(class,parent)
     end
     return object
 end
-tabTest={espMounts=0,espCleanups=0,farmMounts=0,farmCleanups=0,failFarm=true}
+tabTest={espMounts=0,espCleanups=0,farmRequests=0,failLoader=false}
 game.GameId=873703865
 loadstring=function(source)
     if source=='__test_loader__' then return function() dofile('loader.lua') end end
@@ -40,13 +40,12 @@ function game:HttpGet(url)
     if url:find('/loader.lua',1,true) then
         assert(tabTest.revisionChecked,'Refresh checks GitHub revision first')
         assert(url:find('/'..string.rep('a',40)..'/loader.lua',1,true),'Refresh fetches exact latest commit')
+        if tabTest.failLoader then error('Simulated refresh failure') end
         return '__test_loader__'
     end
     if url:find('/games/farm.lua',1,true) then
-        if tabTest.failFarm then error('Simulated farm load failure') end
-        if tabTest.staleFarm then return 'return function() error("stale farm executed") end' end
-        assert(url:find('/'..string.rep('a',40)..'/games/farm.lua',1,true),'Farm uses latest immutable revision')
-        return '-- HoneyBunFarmRouteV7\nreturn function(page) tabTest.farmMounts=tabTest.farmMounts+1; return function() tabTest.farmCleanups=tabTest.farmCleanups+1 end end'
+        tabTest.farmRequests=tabTest.farmRequests+1
+        error('Farm must not be requested')
     end
     return 'return {name="WESTBOUND",description="",farmPath="games/farm.lua",mount=function(page) tabTest.espMounts=tabTest.espMounts+1; return function() tabTest.espCleanups=tabTest.espCleanups+1 end end}'
 end
@@ -59,20 +58,24 @@ local function ui()
 end
 dofile('loader.lua')
 local gui,panel,esp,farm,espPage,farmPage=ui()
-assert(espPage.Visible and not farmPage.Visible,'ESP opens first')
-assert(tabTest.farmMounts==0,'Farm is not loaded until selected')
-farm.Activated:Fire()
-assert(farmPage.Visible and not espPage.Visible,'Farm tab selects its own page')
-tabTest.failFarm=false;tabTest.staleFarm=true;farm.Activated:Fire()
-assert(tabTest.farmMounts==0,'Outdated farm source is blocked before execution')
-tabTest.staleFarm=false;farm.Activated:Fire();farm.Activated:Fire()
-assert(tabTest.farmMounts==1,'Failed farm loading can retry and successful loading is reused')
-esp.Activated:Fire();assert(espPage.Visible and not farmPage.Visible,'ESP remains accessible')
+assert(espPage.Visible and not farmPage,'ESP opens first without a Farm page')
+assert(not farm,'Stale farmPath metadata does not create a Farm tab')
+assert(tabTest.farmRequests==0,'Stale farmPath metadata does not request farm.lua')
 local refresh
 for _,child in ipairs(panel:GetChildren()) do if child.Text=='Refresh' then refresh=child end end
 assert(refresh);refresh.Activated:Fire()
-assert(tabTest.espCleanups==1 and tabTest.farmCleanups==1,'Actual Refresh cleans up both pages')
+local refreshedGui,refreshedPanel=ui()
+local refreshedRefresh
+for _,child in ipairs(refreshedPanel:GetChildren()) do if child.Text=='Refresh' then refreshedRefresh=child end end
+assert(refreshedRefresh,'Refresh succeeds and restores its label')
+assert(tabTest.espCleanups==1,'Actual Refresh cleans up the old ESP page')
 assert(tabTest.espMounts==2,'Actual Refresh reloads the hub')
+assert(tabTest.farmRequests==0,'Refresh never requests farm.lua')
+tabTest.failLoader=true;refresh=refreshedRefresh;refresh.Activated:Fire()
+assert(refresh.Text=='Retry refresh','Failed Refresh offers a retry')
+tabTest.failLoader=false;refresh.Activated:Fire()
+assert(tabTest.espCleanups==2 and tabTest.espMounts==3,'Refresh retry reloads ESP and cleans up the previous page')
+assert(tabTest.farmRequests==0,'Refresh retry never requests farm.lua')
 local newGui=ui();newGui:Destroy()
 for _,connection in ipairs(input.InputBegan.listeners) do assert(not connection.Connected,'Old input listeners are removed') end
-print('Farm/ESP navigation, lazy loading, retry, actual Refresh, and cleanup passed.')
+print('ESP navigation, Refresh SHA lookup, retry, and cleanup passed.')
