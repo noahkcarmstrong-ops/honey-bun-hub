@@ -1,4 +1,4 @@
--- HoneyBunFarmRouteV5
+-- HoneyBunFarmRouteV6
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -8,6 +8,12 @@ local function mount(contentFrame)
     local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
     local gameKey = tostring(game.GameId or 0)
     local modeAttribute = "HoneyBunFarmMode_" .. gameKey
+    local moveAttribute = "HoneyBunFarmLastMove_" .. gameKey
+    local incidentAttribute = "HoneyBunFarmIncident_" .. gameKey
+    local savedMove = playerGui and playerGui:GetAttribute(moveAttribute) or "none"
+    local savedIncident = playerGui and playerGui:GetAttribute(incidentAttribute) or "none"
+    local lastMoveAt, watchedHumanoid
+    local healthWatch, deathWatch
     local mode = playerGui and playerGui:GetAttribute(modeAttribute) or "both"
     if mode ~= "registers" and mode ~= "safes" then mode = "both" end
     local alive, running = true, false
@@ -17,7 +23,7 @@ local function mount(contentFrame)
     local attempts, successes, collectedTotal, failedAttempts, lastFailure = 0, 0, 0, 0, "none"
     local nextAttemptAt = 0
     local deposit, depositTried = nil, {}
-    local scout, shopVisits, scoutRequests, scoutHops, lastScout = nil, {}, 0, 0, "none"
+    local scout, shopVisits, scoutRequests, lastScout = nil, {}, 0, "none"
     local rejected = {}
     local cashIns, campName = 0, "none"
     local targetFailures = setmetatable({}, {__mode="k"})
@@ -40,6 +46,8 @@ local function mount(contentFrame)
         alive, running, pending, deposit, scout = false, false, nil, nil, nil
         saveMode()
         disconnectAll()
+        if healthWatch then healthWatch:Disconnect() end
+        if deathWatch then deathWatch:Disconnect() end
         for _, object in ipairs(owned) do object:Destroy() end
         owned = {}
     end
@@ -192,6 +200,45 @@ local function mount(contentFrame)
         startButton.Text = "Start"
         setStatus(reason or "Stopped")
     end
+    local function vectorText(value)
+        if not value then return "unavailable" end
+        return string.format("%.1f,%.1f,%.1f",value.X,value.Y,value.Z)
+    end
+    local function recordIncident(kind, health)
+        local root=activeRoot
+        local stage=pending and ("robbery/" .. pending.phase) or deposit and ("cash-in/" .. deposit.phase)
+            or scout and ("region/" .. scout.phase) or "between actions"
+        local age=lastMoveAt and string.format("%.2fs",elapsed-lastMoveAt) or "no move this run"
+        savedIncident=kind .. "; stage=" .. stage .. "; health before=" .. tostring(lastHealth)
+            .. "; health observed=" .. tostring(health) .. "; position=" .. vectorText(root and root.Position)
+            .. "; velocity=" .. vectorText(root and root.AssemblyLinearVelocity) .. "; since move=" .. age
+            .. "; last move=" .. savedMove
+        lastFailure=kind
+        if playerGui then pcall(function() playerGui:SetAttribute(incidentAttribute,savedIncident) end) end
+    end
+    local function watchHealth(humanoid)
+        if watchedHumanoid == humanoid then return end
+        if healthWatch then healthWatch:Disconnect() end
+        if deathWatch then deathWatch:Disconnect() end
+        watchedHumanoid=humanoid
+        if humanoid.HealthChanged then
+            healthWatch=humanoid.HealthChanged:Connect(function(health)
+                if not alive or not running then return end
+                if not lastHealth or health >= lastHealth then lastHealth=health;return end
+                recordIncident(health <= 0 and "Death detected" or "Damage detected",health)
+                lastHealth=health
+                stop(health <= 0 and "Stopped: character unavailable or dead" or "Stopped: damage detected")
+            end)
+        end
+        if humanoid.Died then
+            deathWatch=humanoid.Died:Connect(function()
+                if not alive or not running then return end
+                recordIncident("Death detected",humanoid.Health)
+                lastHealth=humanoid.Health
+                stop("Stopped: character unavailable or dead")
+            end)
+        end
+    end
     -- Only use loaded, solid, level ground with room for the character beside the target.
     -- These checks reduce collision/fall risk; server teleport enforcement is still possible.
     local function landingFor(target, root)
@@ -233,21 +280,31 @@ local function mount(contentFrame)
             end
         end
     end
-    local function moveToTarget(target, root)
+    local function moveToTarget(target, root, purpose)
         if (target.part.Position-root.Position).Magnitude <= 10 then return true, false end
         local ok, landing = pcall(landingFor,target,root)
         if not ok or not landing then
             skippedLandings = skippedLandings + 1
             return false, ok and "no clear grounded landing" or "landing checks unavailable"
         end
+        lastMovement=target.name or target.model:GetFullName()
+        lastMoveAt=elapsed
+        local humanoid=player.Character:FindFirstChildWhichIsA("Humanoid")
+        savedMove="purpose=" .. (purpose or target.kind or "target") .. "; target=" .. lastMovement
+            .. "; from=" .. vectorText(root.Position) .. "; to=" .. vectorText(landing.Position)
+            .. "; distance=" .. string.format("%.1f",(landing.Position-root.Position).Magnitude)
+            .. "; health=" .. tostring(humanoid.Health)
+        if playerGui then pcall(function() playerGui:SetAttribute(moveAttribute,savedMove) end) end
         local okMove = pcall(function()
             root.AssemblyLinearVelocity = Vector3.new(0,0,0)
             root.AssemblyAngularVelocity = Vector3.new(0,0,0)
             root.CFrame = landing
+            root.AssemblyLinearVelocity = Vector3.new(0,0,0)
+            root.AssemblyAngularVelocity = Vector3.new(0,0,0)
         end)
         if not okMove then return false, "teleport failed" end
+        if not running or characterRoot() ~= root then return false,"movement interrupted" end
         teleports = teleports + 1
-        lastMovement = target.name or target.model:GetFullName()
         return true, true
     end
     local function shopAnchors()
@@ -307,26 +364,12 @@ local function mount(contentFrame)
     end
     local function processScout(root)
         local state=scout
-        if state.phase == "stream" then
-            if not state.ready and elapsed < state.deadline then return end
-            if nearest(scan(),root) then scout=nil;nextAttemptAt=elapsed;return end
-            local ok,moved=moveToTarget(state.target,root)
-            if not ok then lastFailure="scout: " .. moved;scout=nil;nextAttemptAt=elapsed+1;return end
-            if moved then scoutHops=scoutHops+1 end
-            state.phase,state.due,state.deadline="settle",elapsed+(moved and 0.8 or 0.2),elapsed+3
-            setStatus("Scanning region near " .. state.target.name)
-            return
-        end
-        if (root.Position-state.target.part.Position).Magnitude > 20 then
-            lastFailure="scout landing rejected";stop("Stopped: " .. lastFailure);return
-        end
-        local humanoid=player.Character:FindFirstChildWhichIsA("Humanoid")
-        local velocity=root.AssemblyLinearVelocity
-        if humanoid.FloorMaterial == Enum.Material.Air or (velocity and velocity.Magnitude > 12) then
-            if elapsed >= state.deadline then lastFailure="scout landing did not settle";stop("Stopped: " .. lastFailure) end
-            return
-        end
-        if elapsed >= state.due then scout=nil;nextAttemptAt=elapsed end
+        if not state.ready and elapsed < state.deadline then return end
+        -- A shop is a discovery anchor, not a validated robbery destination.
+        -- Streaming can reveal targets without moving the character toward NPCs.
+        local target=nearest(scan(),root)
+        scout=nil;nextAttemptAt=elapsed
+        setStatus(target and "Targets loaded; continuing route" or "No usable targets in region; searching another area")
     end
     local function campCandidates()
         local result = {}
@@ -380,7 +423,8 @@ local function mount(contentFrame)
         local state=deposit
         if state.phase == "stream" then
             if not state.ready and elapsed < state.due then return end
-            local ok, moved=moveToTarget(state.target,root)
+            local ok, moved=moveToTarget(state.target,root,"cash-in")
+            if not running then return end
             if not ok then lastFailure="cash-in: " .. moved; deposit=nil; return end
             state.phase,state.due,state.deadline="wait",elapsed+(moved and 0.8 or 0.2),elapsed+10
             state.moved,state.landingDeadline=moved,elapsed+3
@@ -418,6 +462,7 @@ local function mount(contentFrame)
         if not root or not remote then stop("Stopped: character or Rob remote unavailable"); return end
         nextAttemptAt = elapsed + 1
         local ok,moved=moveToTarget(target,root)
+        if not running then return end
         if not ok then backoff(target,moved);return end
         pending = {target=target, bag=bag, phase=moved and "landing" or "ready", due=elapsed+(moved and 0.8 or 0.2), landingDeadline=elapsed+3}
         attempts = attempts + 1
@@ -460,6 +505,7 @@ local function mount(contentFrame)
         end
         if pending.phase == "ready" and target.kind == "safe" and not target.model.Open.Value then
             local ok = pcall(function() target.model.OpenSafe:FireServer("Completed") end)
+            if not running or not pending then return end
             if not ok then failTarget("OpenSafe call failed"); return end
             pending.phase, pending.due, pending.openDeadline = "waitSafe", elapsed + 0.2, elapsed + 5
             return
@@ -471,6 +517,7 @@ local function mount(contentFrame)
                 remote:FireServer("Safe", target.model)
             end
         end)
+        if not running or not pending then return end
         if not ok then failTarget("Rob call failed"); return end
         pending.phase, pending.observeUntil = "observe", elapsed + 3
     end
@@ -529,7 +576,7 @@ local function mount(contentFrame)
                 table.insert(paths, tostring(name) .. " {Open=" .. childInfo("Open") .. ", Amount=" .. childInfo("Amount") .. ", Active=" .. childInfo("Active") .. ", Safe=" .. childInfo("Safe") .. ", OpenSafe=" .. childInfo("OpenSafe") .. ", Children=" .. table.concat(descendants,"|") .. "}")
             end
         end
-        return table.concat({"Honey Bun Hub farm report", "Mode: " .. modeText(), "Running: " .. tostring(running), "Bag: " .. tostring(bag or "unavailable") .. "/" .. tostring(capacity or "unavailable"), "Movement: checked teleport route V5", "Teleports: " .. teleports, "Skipped landings: " .. skippedLandings, "Last teleport: " .. lastMovement, "Health: " .. tostring(lastHealth or "unknown"), "Cash-in: nearest recognized loaded camp; historical fallback", "Position: " .. position, "Camp objects: " .. (#campPaths > 0 and table.concat(campPaths, ", ") or "none loaded"), "Camp: " .. campName, "Confirmed cash-ins: " .. cashIns, "Loaded camp candidates: " .. #campCandidates(), "Rob remote present: " .. tostring(validRemote() ~= nil), "Scanned: " .. scanned, "Eligible: " .. eligible, "Rejected targets: " .. (#reasons>0 and table.concat(reasons,", ") or "none"), "Shop anchors: " .. #shopAnchors(), "Region requests: " .. scoutRequests, "Region hops: " .. scoutHops, "Last region: " .. lastScout, "Region scan active: " .. tostring(scout~=nil), "Attempts: " .. attempts, "Confirmed bag increases: " .. successes, "Failed attempts: " .. failedAttempts, "Last failure: " .. lastFailure, "Possible drop-off prompts (unverified): " .. (#prompts > 0 and table.concat(prompts, ", ") or "none loaded"), "Targets: " .. (#paths > 0 and table.concat(paths, ", ") or "none")}, "\n")
+        return table.concat({"Honey Bun Hub farm report", "Mode: " .. modeText(), "Running: " .. tostring(running), "Bag: " .. tostring(bag or "unavailable") .. "/" .. tostring(capacity or "unavailable"), "Movement: checked teleport route V6", "Teleports: " .. teleports, "Skipped landings: " .. skippedLandings, "Last teleport: " .. lastMovement, "Saved last move: " .. savedMove, "Last incident (saved): " .. savedIncident, "Health: " .. tostring(lastHealth or "unknown"), "Cash-in: nearest recognized loaded camp; historical fallback", "Position: " .. position, "Camp objects: " .. (#campPaths > 0 and table.concat(campPaths, ", ") or "none loaded"), "Camp: " .. campName, "Confirmed cash-ins: " .. cashIns, "Loaded camp candidates: " .. #campCandidates(), "Rob remote present: " .. tostring(validRemote() ~= nil), "Scanned: " .. scanned, "Eligible: " .. eligible, "Rejected targets: " .. (#reasons>0 and table.concat(reasons,", ") or "none"), "Shop anchors: " .. #shopAnchors(), "Region requests: " .. scoutRequests, "Region movement: streaming only", "Last region: " .. lastScout, "Region scan active: " .. tostring(scout~=nil), "Attempts: " .. attempts, "Confirmed bag increases: " .. successes, "Failed attempts: " .. failedAttempts, "Last failure: " .. lastFailure, "Possible drop-off prompts (unverified): " .. (#prompts > 0 and table.concat(prompts, ", ") or "none loaded"), "Targets: " .. (#paths > 0 and table.concat(paths, ", ") or "none")}, "\n")
     end
     modeButton.Activated:Connect(function()
         mode = mode == "both" and "registers" or mode == "registers" and "safes" or "both"
@@ -544,7 +591,9 @@ local function mount(contentFrame)
         scan()
         depositTried={};deposit=nil;scout=nil
         running, stepClock, failedAttempts, nextAttemptAt, activeRoot = true, 0, 0, elapsed, characterRoot()
-        lastHealth = player.Character:FindFirstChildWhichIsA("Humanoid").Health
+        local humanoid=player.Character:FindFirstChildWhichIsA("Humanoid")
+        lastHealth=humanoid.Health
+        watchHealth(humanoid)
         startButton.Text = "Stop"; setStatus("Running teleport route; cooldowns unchanged")
     end)
     reportButton.Activated:Connect(function()
@@ -568,9 +617,14 @@ local function mount(contentFrame)
         local bag, capacity = refreshBag()
         if not running then return end
         local root = characterRoot()
-        if not root or root~=activeRoot then stop("Stopped: character unavailable or changed"); return end
+        if not root or root~=activeRoot then
+            local humanoid=player.Character and player.Character:FindFirstChildWhichIsA("Humanoid")
+            if humanoid and humanoid.Health <= 0 then recordIncident("Death detected",humanoid.Health)
+            else recordIncident("Character unavailable or changed",humanoid and humanoid.Health) end
+            stop("Stopped: character unavailable or changed");return
+        end
         local health = player.Character:FindFirstChildWhichIsA("Humanoid").Health
-        if lastHealth and health < lastHealth then lastHealth = health; lastFailure = "damage detected"; stop("Stopped: damage detected"); return end
+        if lastHealth and health < lastHealth then recordIncident("Damage detected",health); lastHealth = health; stop("Stopped: damage detected"); return end
         lastHealth = health
         if stepClock < 0.2 then return end
         stepClock = 0

@@ -5,7 +5,7 @@ local function signal()
     return s
 end
 local objects, methods = {}, {}
-local meta={__index=function(o,k) if methods[k] then return methods[k] end; local value=rawget(o.props,k); if value ~= nil then return value end; for _,child in ipairs(objects) do if not rawget(child,"destroyed") and rawget(child.props,"Parent")==o and rawget(child.props,"Name")==k then return child end end end,__newindex=function(o,k,v)o.props[k]=v; if k=="CFrame" and v.Position then o.props.Position=v.Position end end}
+local meta={__index=function(o,k) if methods[k] then return methods[k] end; local value=rawget(o.props,k); if value ~= nil then return value end; for _,child in ipairs(objects) do if not rawget(child,"destroyed") and rawget(child.props,"Parent")==o and rawget(child.props,"Name")==k then return child end end end,__newindex=function(o,k,v)o.props[k]=v; if k=="CFrame" and v.Position then o.props.Position=v.Position; if o.props.afterMove then o.props.afterMove(v) end end end}
 local function inst(class,parent)
     local o=setmetatable({destroyed=false,props={ClassName=class,Name=class,Parent=parent,Destroying=signal(),Activated=signal(),Enabled=true,Visible=true},attributes={}},meta);table.insert(objects,o);return o
 end
@@ -30,7 +30,7 @@ UDim={new=function(s,o)return{Scale=s,Offset=o}end};UDim2={new=function(a,b,c,d)
 Color3={fromRGB=function(r,g,b)return{R=r,G=g,B=b}end};local function enum()return setmetatable({}, {__index=function(t,k)local v=enum();rawset(t,k,v);return v end})end;Enum=enum()
 local run={Heartbeat=signal()};local player=inst("Player");local gui=inst("PlayerGui",player);local players={LocalPlayer=player,list={player}}
 function players:GetPlayers()return self.list end
-local char=inst("Model");char.Parent=workspace;local hum=inst("Humanoid",char);hum.Health=100;local root=inst("Part",char);root.Name="HumanoidRootPart";root.Size=Vector3.new(2,2,1);root.Position=Vector3.new(0,0,0);root.CFrame={Position=root.Position};char.PrimaryPart=root;player.Character=char
+local char=inst("Model");char.Parent=workspace;local hum=inst("Humanoid",char);hum.HealthChanged=signal();hum.Died=signal();hum.Health=100;local root=inst("Part",char);root.Name="HumanoidRootPart";root.Size=Vector3.new(2,2,1);root.Position=Vector3.new(0,0,0);root.CFrame={Position=root.Position};char.PrimaryPart=root;player.Character=char
 local states=inst("Folder",player);states.Name="States";local bag=inst("NumberValue",states);bag.Name="Bag";bag.Value=0
 local stats=inst("Folder",player);stats.Name="Stats";local bagLevel=inst("Folder",stats);bagLevel.Name="BagSizeLevel";local capacity=inst("NumberValue",bagLevel);capacity.Name="CurrentAmount";capacity.Value=10
 local workspaceRoot=inst("Workspace");workspace=workspaceRoot;workspace.DescendantAdded=signal();workspace.DescendantRemoving=signal()
@@ -205,7 +205,8 @@ content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
 local streamShops=inst("Folder",workspace);streamShops.Name="Shops";local streamAnchor=inst("Part",streamShops);streamAnchor.Name="OutlawGeneralStore9";streamAnchor.Position=Vector3.new(40,0,0);streamAnchor.CFrame={Position=streamAnchor.Position}
 local streamedRegister
 workspace.StreamingEnabled=true;task={spawn=function(fn)fn()end}
-function player:RequestStreamAroundAsync()safe.Parent=workspace;streamedRegister=inst("Model",workspace);streamedRegister.Name="CashRegister";local streamedOpen=inst("Part",streamedRegister);streamedOpen.Name="Open";streamedOpen.Position=Vector3.new(5,0,0);streamedOpen.CFrame={Position=streamedOpen.Position};local streamedUnion=inst("Part",streamedRegister);streamedUnion.Name="Union";local streamedActive=inst("BoolValue",streamedRegister);streamedActive.Name="Active";streamedActive.Value=true end
+function player:RequestStreamAroundAsync()safe.Parent=workspace;openSafe.Value=true;streamedRegister=inst("Model",workspace);streamedRegister.Name="CashRegister";local streamedOpen=inst("Part",streamedRegister);streamedOpen.Name="Open";streamedOpen.Position=Vector3.new(5,0,0);streamedOpen.CFrame={Position=streamedOpen.Position};local streamedUnion=inst("Part",streamedRegister);streamedUnion.Name="Union";local streamedActive=inst("BoolValue",streamedRegister);streamedActive.Name="Active";streamedActive.Value=true end
+safe.Parent=nil;bag.Value=0;root.Position=Vector3.new(0,0,0);root.CFrame={Position=root.Position}
 safe.Parent=workspace;openSafe.Value=false;openRemote.Parent=nil;ensureMode("Mode: Registers + safes")
 bag.Value=0;root.CFrame=originalFrame;local streamCalls=#rob.calls;fire("Start");for _=1,8 do run.Heartbeat:Fire(.3) end
 assert(streamedRegister and #rob.calls==streamCalls+1 and rob.calls[#rob.calls][1]=="Register","shop streaming recovers from only a blocked safe and resumes register farming")
@@ -216,6 +217,10 @@ local cancelShops=inst("Folder",workspace);cancelShops.Name="Shops";local cancel
 workspace.StreamingEnabled=true;task.spawn=function(fn)queued=fn end;safe.Parent=nil;local cancelCalls=#rob.calls;root.CFrame=originalFrame;fire("Start");run.Heartbeat:Fire(.2);content:Destroy();cleanup();assert(queued,"stream request was queued");queued();run.Heartbeat:Fire(2)
 assert(#rob.calls==cancelCalls and root.CFrame==originalFrame,"canceled shop stream cannot restart farming")
 workspace.StreamingEnabled=false;cancelShops:Destroy();safe.Parent=workspace
+-- A death during a pending teleport cancels the request and persists an incident.
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content);safePart.Position=Vector3.new(100,0,0);openSafe.Value=true;openRemote.Parent=safe;ensureMode("Mode: Safes");local deathCalls=#rob.calls;root.CFrame=originalFrame;fire("Start");run.Heartbeat:Fire(.2);hum.Died:Fire();run.Heartbeat:Fire(.2)
+assert(#rob.calls==deathCalls and gui:GetAttribute("HoneyBunFarmIncident_123"),"death cancels pending teleport and saves incident")
+content:Destroy();cleanup();content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content);assert(gui:GetAttribute("HoneyBunFarmIncident_123"),"incident survives remount");safePart.Position=Vector3.new(6,0,0);content:Destroy();cleanup()
 -- The idle report identifies the rejected safe contract instead of guessing cooldowns.
 content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
 openSafe.Value=false;openRemote.Parent=nil;copied=nil;fire("Copy farm report")
@@ -230,5 +235,9 @@ assert(labelText("Returning to Workspace.Shops.OutlawGeneralStore4"),"actual out
 run.Heartbeat:Fire(.2);bag.Value=0;run.Heartbeat:Fire(.3)
 assert(labelText("Bag emptied; continuing route"),"shop-area return requires empty bag before resuming")
 content:Destroy();cleanup();shopFolder:Destroy();camp.Parent=workspace;campFar.Parent=workspace;openRemote.Parent=safe
+-- Synchronous death during the move must prevent a pending robbery from being revived.
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content);safePart.Position=Vector3.new(100,0,0);openSafe.Value=true;floorAvailable=true;ensureMode("Mode: Safes");root.Position=Vector3.new(0,0,0);root.CFrame={Position=root.Position};root.afterMove=function()hum.Died:Fire()end;local moveCalls=#rob.calls;fire("Start");run.Heartbeat:Fire(.2);run.Heartbeat:Fire(.5);assert(#rob.calls==moveCalls and labelText("Stopped"),"death during move cancels robbery");root.afterMove=nil;safePart.Position=Vector3.new(6,0,0);content:Destroy();cleanup()
+-- A valid shop region with ground still must never become a scouting teleport.
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content);local scoutShop=inst("Folder",workspace);scoutShop.Name="Shops";local scoutAnchor=inst("Part",scoutShop);scoutAnchor.Name="OutlawGeneralStore99";scoutAnchor.Position=Vector3.new(40,0,0);scoutAnchor.CFrame={Position=scoutAnchor.Position};safe.Parent=nil;floorAvailable=true;root.Position=Vector3.new(0,0,0);root.CFrame={Position=root.Position};local scoutMoves=0;root.afterMove=function()scoutMoves=scoutMoves+1 end;fire("Start");for _=1,8 do run.Heartbeat:Fire(.3) end;assert(scoutMoves==0,"shop scouting never teleports on valid ground");root.afterMove=nil;safe.Parent=workspace;scoutShop:Destroy();content:Destroy();cleanup()
 print("Grounded teleport routing, clearance, streaming gaps, server correction, damage, nested targets, cooldown backoff passed.")
 print("Farm payloads, confirmed safe opening, collection observation, full bags, bounded failures, stop, and cleanup passed.")
