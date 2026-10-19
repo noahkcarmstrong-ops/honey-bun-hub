@@ -77,5 +77,17 @@ tabTest.failLoader=false;refresh.Activated:Fire()
 assert(tabTest.espCleanups==2 and tabTest.espMounts==3,'Refresh retry reloads ESP and cleans up the previous page')
 assert(tabTest.farmRequests==0,'Refresh retry never requests farm.lua')
 local newGui=ui();newGui:Destroy()
+local supportedGameId=game.GameId
+game.GameId=0
+dofile('loader.lua')
+local unsupportedGui,unsupportedPanel,unsupportedESP=ui()
+assert(not unsupportedESP,'Unsupported games do not advertise ESP')
+assert(tabTest.espMounts==3,'Unsupported games never mount Westbound features')
+local emptyMessage=false
+for _,child in ipairs(unsupportedPanel:FindFirstChild('ESPPage'):GetChildren()) do
+    if child.Text=='No game-specific features added yet.' then emptyMessage=true end
+end
+assert(emptyMessage,'Unsupported games explain that features have not been added')
+unsupportedGui:Destroy();game.GameId=supportedGameId
 for _,connection in ipairs(input.InputBegan.listeners) do assert(not connection.Connected,'Old input listeners are removed') end
 print('ESP navigation, Refresh SHA lookup, retry, and cleanup passed.')

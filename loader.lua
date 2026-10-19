@@ -92,18 +92,20 @@ local tabLayout = Instance.new("UIListLayout", tabs)
 tabLayout.FillDirection = Enum.FillDirection.Horizontal
 tabLayout.Padding = UDim.new(0, 8)
 tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-local espTab = Instance.new("TextButton")
-espTab.Name = "ESP"
-espTab.Size = UDim2.fromOffset(72, 32)
-espTab.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
-espTab.BorderSizePixel = 0
-espTab.Text = "ESP"
-espTab.TextColor3 = Color3.fromRGB(20, 20, 20)
-espTab.TextSize = 12
-espTab.Font = Enum.Font.GothamMedium
-espTab.AutoButtonColor = false
-espTab.Parent = tabs
-Instance.new("UICorner", espTab).CornerRadius = UDim.new(0, 6)
+if type(current.mount) == "function" then
+    local espTab = Instance.new("TextButton")
+    espTab.Name = "ESP"
+    espTab.Size = UDim2.fromOffset(72, 32)
+    espTab.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
+    espTab.BorderSizePixel = 0
+    espTab.Text = "ESP"
+    espTab.TextColor3 = Color3.fromRGB(20, 20, 20)
+    espTab.TextSize = 12
+    espTab.Font = Enum.Font.GothamMedium
+    espTab.AutoButtonColor = false
+    espTab.Parent = tabs
+    Instance.new("UICorner", espTab).CornerRadius = UDim.new(0, 6)
+end
 local content = Instance.new("ScrollingFrame")
 content.Name = "ESPPage"
 content.Position = UDim2.fromOffset(28, 160)
@@ -186,4 +188,7 @@ if type(current.mount) == "function" then
         text(content, "Game menu failed to load. Refresh to retry.",
             UDim2.fromOffset(0, 0), UDim2.new(1, -8, 0, 40), 12, 170).TextWrapped = true
     end
+else
+    text(content, current.description, UDim2.fromOffset(0, 0),
+        UDim2.new(1, -8, 0, 48), 12, 170).TextWrapped = true
 end
