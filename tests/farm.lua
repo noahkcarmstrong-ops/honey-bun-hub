@@ -174,12 +174,15 @@ blocked=true;rejectedLanding("blocked body clearance prevents teleport");blocked
 slope=.5;rejectedLanding("steep ground prevents teleport");slope=1
 water=true;rejectedLanding("water prevents teleport");water=false
 floorAvailable=false;rejectedLanding("unloaded ground prevents teleport");floorAvailable=true
--- A server correction or damage during landing stops before any request.
+-- A server correction skips the rejected target without stopping the route.
 content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
+local secondSafe=inst("Model",workspace);secondSafe.Name="Safe";local secondAmount=inst("NumberValue",secondSafe);secondAmount.Name="Amount";secondAmount.Value=20;local secondPart=inst("Part",secondSafe);secondPart.Name="Safe";secondPart.Position=Vector3.new(106,0,0);secondPart.CFrame={Position=secondPart.Position};secondPart.CanCollide=true;secondPart.Anchored=true;local secondOpen=inst("BoolValue",secondSafe);secondOpen.Name="Open";secondOpen.Value=true
 root.CFrame=originalFrame;fire("Start");run.Heartbeat:Fire(.2);calls=#rob.calls
 root.CFrame=originalFrame;run.Heartbeat:Fire(.9)
-assert(labelText("Stopped: landing rejected") and #rob.calls==calls,"server correction stops route")
-content:Destroy();cleanup()
+assert(labelText("Skipping failed target") and #rob.calls==calls,"server correction backs off target")
+for _=1,8 do run.Heartbeat:Fire(.3) end
+assert(#rob.calls==calls+1 and rob.calls[#rob.calls][1]=="Safe","next grounded target collects after correction")
+calls=#rob.calls;fire("Stop");secondSafe:Destroy();content:Destroy();cleanup()
 content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
 root.CFrame=originalFrame;fire("Start");run.Heartbeat:Fire(.2);hum.Health=99;run.Heartbeat:Fire(.01)
 assert(labelText("Stopped: damage detected") and #rob.calls==calls,"damage stops without waiting for next action tick")
@@ -239,5 +242,33 @@ content:Destroy();cleanup();shopFolder:Destroy();camp.Parent=workspace;campFar.P
 content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content);safePart.Position=Vector3.new(100,0,0);openSafe.Value=true;floorAvailable=true;ensureMode("Mode: Safes");root.Position=Vector3.new(0,0,0);root.CFrame={Position=root.Position};root.afterMove=function()hum.Died:Fire()end;local moveCalls=#rob.calls;fire("Start");run.Heartbeat:Fire(.2);run.Heartbeat:Fire(.5);assert(#rob.calls==moveCalls and labelText("Stopped"),"death during move cancels robbery");root.afterMove=nil;safePart.Position=Vector3.new(6,0,0);content:Destroy();cleanup()
 -- A valid shop region with ground still must never become a scouting teleport.
 content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content);local scoutShop=inst("Folder",workspace);scoutShop.Name="Shops";local scoutAnchor=inst("Part",scoutShop);scoutAnchor.Name="OutlawGeneralStore99";scoutAnchor.Position=Vector3.new(40,0,0);scoutAnchor.CFrame={Position=scoutAnchor.Position};safe.Parent=nil;floorAvailable=true;root.Position=Vector3.new(0,0,0);root.CFrame={Position=root.Position};local scoutMoves=0;root.afterMove=function()scoutMoves=scoutMoves+1 end;fire("Start");for _=1,8 do run.Heartbeat:Fire(.3) end;assert(scoutMoves==0,"shop scouting never teleports on valid ground");root.afterMove=nil;safe.Parent=workspace;scoutShop:Destroy();content:Destroy();cleanup()
+-- A distant loaded target must request its own streamed ground before landing.
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
+local targetStreamRequests,targetStreamPosition=0,nil
+local priorStreamRequest=player.RequestStreamAroundAsync
+function player:RequestStreamAroundAsync(position)
+    targetStreamRequests=targetStreamRequests+1;targetStreamPosition=position
+    if position and position.X >= 90 then floorAvailable=true end
+end
+workspace.StreamingEnabled=true;task={spawn=function(fn)fn()end}
+safe.Parent=workspace;safePart.Parent=safe;safePart.Name="SafePart";safePart.Position=Vector3.new(100,0,0);safePart.CFrame={Position=safePart.Position}
+openSafe.Parent=safe;openSafe.Value=true;openRemote.Parent=safe
+floorAvailable=false;bag.Value=0;root.CFrame=originalFrame;ensureMode("Mode: Safes")
+local distantStreamCalls=#rob.calls;fire("Start")
+for _=1,10 do run.Heartbeat:Fire(.3) end
+assert(targetStreamRequests>0 and targetStreamPosition and targetStreamPosition.X>=90,"distant target requests streaming near its position")
+assert(#rob.calls==distantStreamCalls+1 and rob.calls[#rob.calls][1]=="Safe","streamed ground lets distant target collect")
+fire("Stop");workspace.StreamingEnabled=false;floorAvailable=true
+player.RequestStreamAroundAsync=priorStreamRequest
+safePart.Name="Safe";safePart.Position=Vector3.new(6,0,0);safePart.CFrame={Position=safePart.Position};content:Destroy();cleanup()
+-- Previously seen target locations remain discovery anchors after streaming unloads them.
+content=inst("ScrollingFrame");cleanup=dofile("games/farm.lua")(content)
+safePart.Position=Vector3.new(100,0,0);bag.Value=0;fire("Start");fire("Stop");safe.Parent=nil
+local rememberedRequest
+function player:RequestStreamAroundAsync(position)rememberedRequest=position end
+workspace.StreamingEnabled=true;fire("Start");run.Heartbeat:Fire(.3)
+assert(rememberedRequest and rememberedRequest.X==100,"unloaded target region remains discoverable")
+fire("Stop");workspace.StreamingEnabled=false;player.RequestStreamAroundAsync=priorStreamRequest
+safe.Parent=workspace;safePart.Position=Vector3.new(6,0,0);content:Destroy();cleanup()
 print("Grounded teleport routing, clearance, streaming gaps, server correction, damage, nested targets, cooldown backoff passed.")
 print("Farm payloads, confirmed safe opening, collection observation, full bags, bounded failures, stop, and cleanup passed.")
